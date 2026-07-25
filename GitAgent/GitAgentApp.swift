@@ -17,12 +17,21 @@ struct GitAgentApp: App {
             ContentView()
                 .environment(auth)
                 .environment(settings)
+                #if os(macOS)
+                .onAppear {
+                    // Activate at launch so the window comes to the front
+                    // instead of staying behind the previously active app.
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+                #endif
         }
 
-        // macOS: GitAgent → Settings… (⌘,). Ignored on iOS.
+        // macOS: GitAgent → Settings… (⌘,). The Settings scene is macOS-only.
+        #if os(macOS)
         Settings {
             SettingsView()
                 .environment(settings)
         }
+        #endif
     }
 }

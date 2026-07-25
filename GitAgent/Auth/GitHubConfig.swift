@@ -6,9 +6,9 @@
 import Foundation
 
 enum GitHubConfig {
-    /// Register an OAuth App at https://github.com/settings/developers,
-    /// enable "Device Flow" in its settings, then paste the Client ID here.
-    static let clientID = "Ov23liJ8WQHNZeoWbe3j"
+    /// Client ID of your GitHub OAuth App. The value lives in the gitignored
+    /// GitAgent/Auth/LocalSecrets.swift (see README, "Setup").
+    static let clientID = GitAgentSecrets.clientID
 
     /// repo: read private/public repositories; read.user: read the user profile
     static let scope = "repo read:user"

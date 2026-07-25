@@ -70,6 +70,26 @@ private func handleMarkdownLink(_ link: MarkdownLink,
     }
 }
 
+/// Loading indicator pinned to the top of the detail area instead of centered.
+private struct TopLoadingView: View {
+    var label: String? = nil
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Group {
+                if let label {
+                    ProgressView(label)
+                } else {
+                    ProgressView()
+                }
+            }
+            .padding(.top, 48)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 /// Loads a repository by owner/name (a tapped github.com link) and then shows it
 /// with the regular `RepoDetailView`.
 struct LinkedRepoView: View {
@@ -94,7 +114,7 @@ struct LinkedRepoView: View {
                     Button(settings.tr(.retry)) { Task { await load() } }
                 }
             } else {
-                ProgressView(settings.tr(.loading))
+                TopLoadingView(label: settings.tr(.loading))
             }
         }
         .navigationTitle("\(ref.owner)/\(ref.name)")
@@ -147,7 +167,9 @@ struct RepoDetailView: View {
                                 navigationPath: navigationPath)
             }
         }
+        #if os(macOS)
         .navigationTitle(repo.name)
+        #endif
     }
 }
 
@@ -167,7 +189,7 @@ private struct ReadmeView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView(settings.tr(.loadingReadme))
+                TopLoadingView(label: settings.tr(.loadingReadme))
             } else if let errorMessage {
                 ContentUnavailableView {
                     Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
@@ -231,7 +253,7 @@ struct FileBrowserView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView(settings.tr(.loading))
+                TopLoadingView(label: settings.tr(.loading))
             } else if let errorMessage {
                 ContentUnavailableView {
                     Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
@@ -326,7 +348,7 @@ struct MarkdownFileView: View {
                 ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
                                        description: Text(errorMessage))
             } else {
-                ProgressView()
+                TopLoadingView()
             }
         }
         .navigationTitle(ref.name)
@@ -366,7 +388,7 @@ struct TextFileView: View {
                 ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
                                        description: Text(errorMessage))
             } else {
-                ProgressView()
+                TopLoadingView()
             }
         }
         .navigationTitle(ref.name)

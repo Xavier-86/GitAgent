@@ -30,7 +30,7 @@ final class AppSettings {
 enum L10n {
     enum Key {
         // Sidebar
-        case myRepos, searchRepos, viewUser, logout, settings, fontSize
+        case myRepos, starred, searchRepos, viewUser, logout, settings, fontSize
         // Login
         case appTagline, signIn, deviceCodePrompt, openAuthPage, copyCode, waitingAuth, cancel
         // Loading / states
@@ -55,6 +55,7 @@ enum L10n {
 
     private static let strings: [Key: String] = [
         .myRepos: "My Repositories",
+        .starred: "Starred",
         .searchRepos: "Search Repositories",
         .viewUser: "View User",
         .logout: "Sign Out",
@@ -87,7 +88,7 @@ enum L10n {
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",
-        .clientIDMissing: "Please set your OAuth App Client ID in GitHubConfig.swift first.",
+        .clientIDMissing: "Please set your OAuth App Client ID in LocalSecrets.swift first (see README).",
         .authCodeExpired: "The device code expired. Please try again.",
         .accessDenied: "Authorization was denied.",
         .authTimeout: "Authorization timed out. Please try again.",

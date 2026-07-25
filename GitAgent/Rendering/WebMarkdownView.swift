@@ -13,7 +13,7 @@ import WebKit
 /// is deterministic — katex.min.css resolves fonts via a relative `fonts/` path.
 private enum WebAssets {
     /// Bump this when the bundled assets change to force re-installation.
-    private static let version = "4"
+    private static let version = "5"
 
     private static let assetFiles = [
         "template.html",

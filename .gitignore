@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Archives / export
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# AppCode
+.idea/
+
+# Personal / machine-local settings — Apple team ID, signing identity,
+# GitHub OAuth Client ID. Never commit; see README ("Setup").
+Local.xcconfig
+LocalSecrets.swift

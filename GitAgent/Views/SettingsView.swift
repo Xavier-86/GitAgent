@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// App settings window (macOS: ⌘,). Reading font size.
+/// App settings (macOS: ⌘, window; iOS: gear button in the sidebar). Reading font size.
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
 
@@ -21,8 +21,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        #if os(macOS)
         .frame(width: 360)
         .padding()
+        #endif
     }
 
     private var fontSizeBinding: Binding<Int> {

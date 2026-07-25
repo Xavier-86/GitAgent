@@ -6,13 +6,14 @@
 import SwiftUI
 
 enum SidebarItem: CaseIterable, Identifiable, Hashable {
-    case mine, search, user
+    case mine, starred, search, user
 
     var id: Self { self }
 
     var titleKey: L10n.Key {
         switch self {
         case .mine: return .myRepos
+        case .starred: return .starred
         case .search: return .searchRepos
         case .user: return .viewUser
         }
@@ -21,6 +22,7 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
     var icon: String {
         switch self {
         case .mine: return "books.vertical"
+        case .starred: return "star"
         case .search: return "magnifyingglass"
         case .user: return "person"
         }
@@ -32,6 +34,7 @@ struct MainView: View {
     @Environment(AppSettings.self) private var settings
     @State private var selection: SidebarItem? = .mine
     @State private var navigationPath = NavigationPath()
+    @State private var showSettings = false
 
     var body: some View {
         NavigationSplitView {
@@ -73,6 +76,21 @@ struct MainView: View {
                 }
             }
             .navigationTitle("GitAgent")
+            #if os(iOS)
+            // iOS has no Settings scene (⌘,) — offer the same settings via a sheet.
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
+            #endif
         } detail: {
             NavigationStack(path: $navigationPath) {
                 detailView
@@ -101,6 +119,11 @@ struct MainView: View {
                 try await client.myRepos()
             }
             .navigationTitle(settings.tr(.myRepos))
+        case .starred:
+            LoadingRepoListView { client in
+                try await client.starredRepos()
+            }
+            .navigationTitle(settings.tr(.starred))
         case .search:
             SearchReposView()
         case .user:

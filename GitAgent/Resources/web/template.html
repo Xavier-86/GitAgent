@@ -44,7 +44,38 @@
   // markdown: raw Markdown; rawBase: base URL for relative images; blobBase: base URL for relative links
   function renderMarkdown(markdown, rawBase, blobBase) {
     const container = document.getElementById('content');
-    container.innerHTML = md.render(markdown);
+
+    // Extract math BEFORE markdown-it runs: otherwise underscores/asterisks
+    // inside formulas get parsed as Markdown emphasis and the delimiters can
+    // no longer be matched. Math is rendered with KaTeX right away and put
+    // back via HTML placeholders that markdown-it passes through untouched.
+    const math = [];
+    const stashMath = (tex, display) => {
+      try {
+        math.push(katex.renderToString(tex.trim(), { displayMode: display, throwOnError: false }));
+      } catch (e) {
+        math.push(tex);
+      }
+      return math.length - 1;
+    };
+    let src = markdown;
+    // ```math fenced blocks
+    src = src.replace(/```math\s*\n([\s\S]*?)```/g, (m, tex) =>
+      '\n\n<div data-math-placeholder="' + stashMath(tex, true) + '"></div>\n\n');
+    // $$ ... $$ display math (may span multiple lines/paragraphs)
+    src = src.replace(/\$\$([\s\S]+?)\$\$/g, (m, tex) =>
+      '\n\n<div data-math-placeholder="' + stashMath(tex, true) + '"></div>\n\n');
+    // $ ... $ inline math (single line, no spaces next to the delimiters, not \$)
+    src = src.replace(/(?<!\\)\$([^\s$](?:[^$\n]*[^\s$])?)\$/g, (m, tex) =>
+      '<span data-math-placeholder="' + stashMath(tex, false) + '"></span>');
+
+    container.innerHTML = md.render(src);
+
+    // Swap the placeholders for the rendered KaTeX.
+    container.querySelectorAll('[data-math-placeholder]').forEach(el => {
+      el.innerHTML = math[Number(el.getAttribute('data-math-placeholder'))];
+      el.removeAttribute('data-math-placeholder');
+    });
 
     // Relative image URLs → absolute raw URLs
     if (rawBase) {
@@ -66,16 +97,6 @@
         }
       });
     }
-
-    // Math formulas (code blocks are skipped)
-    renderMathInElement(container, {
-      delimiters: [
-        { left: '$$', right: '$$', display: true },
-        { left: '$', right: '$', display: false }
-      ],
-      ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-      throwOnError: false
-    });
 
     // Syntax highlighting
     container.querySelectorAll('pre code').forEach(el => {

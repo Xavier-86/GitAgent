@@ -27,8 +27,7 @@ struct RepoRow: View {
             }
             HStack(spacing: 12) {
                 if let language = repo.language {
-                    Label(language, systemImage: "circle.fill")
-                        .labelStyle(.titleAndIcon)
+                    Text(language)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -36,13 +35,29 @@ struct RepoRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let updatedAt = repo.updatedAt {
-                    Text(updatedAt, style: .relative)
+                    Text(Self.relativeShort(updatedAt))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// Single-unit relative time ("3m ago", "2d ago") — only the largest unit.
+    private static let relativeFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .hour, .day, .weekOfMonth, .month, .year]
+        formatter.maximumUnitCount = 1
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
+
+    private static func relativeShort(_ date: Date) -> String {
+        let interval = max(0, -date.timeIntervalSinceNow)
+        guard interval >= 60 else { return "just now" }
+        let unit = Self.relativeFormatter.string(from: interval) ?? ""
+        return "\(unit) ago"
     }
 }
 

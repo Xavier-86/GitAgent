@@ -1,0 +1,7 @@
+// Shared build settings (safe to commit).
+//
+// Personal values (Apple team ID, signing identity) go in Local.xcconfig,
+// which is gitignored — see README ("Setup"). The GitHub OAuth Client ID
+// lives separately in the gitignored GitAgent/Auth/LocalSecrets.swift.
+
+#include? "Local.xcconfig"

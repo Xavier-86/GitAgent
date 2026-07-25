@@ -111,6 +111,14 @@ final class GitHubClient {
         ])
     }
 
+    /// Repositories starred by the signed-in user, most recently starred first.
+    func starredRepos() async throws -> [Repo] {
+        try await get([Repo].self, path: "/user/starred", query: [
+            URLQueryItem(name: "sort", value: "updated"),
+            URLQueryItem(name: "per_page", value: "100"),
+        ])
+    }
+
     /// A single repository by owner and name (used to open github.com links in-app).
     func repo(owner: String, name: String) async throws -> Repo {
         try await get(Repo.self, path: "/repos/\(owner)/\(name)")
