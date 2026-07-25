@@ -1,0 +1,112 @@
+//
+//  Models.swift
+//  GitAgent
+//
+
+import Foundation
+
+struct GitHubUser: Codable, Hashable {
+    let login: String
+    let name: String?
+    let avatarURL: URL?
+    let bio: String?
+    let publicRepos: Int
+
+    enum CodingKeys: String, CodingKey {
+        case login, name, bio
+        case avatarURL = "avatar_url"
+        case publicRepos = "public_repos"
+    }
+}
+
+struct Repo: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let fullName: String
+    let description: String?
+    let owner: RepoOwner
+    let isPrivate: Bool
+    let htmlURL: URL?
+    let language: String?
+    let stargazersCount: Int
+    let updatedAt: Date?
+    let defaultBranch: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, owner, language
+        case fullName = "full_name"
+        case isPrivate = "private"
+        case htmlURL = "html_url"
+        case stargazersCount = "stargazers_count"
+        case updatedAt = "updated_at"
+        case defaultBranch = "default_branch"
+    }
+}
+
+struct RepoOwner: Codable, Hashable {
+    let login: String
+    let avatarURL: URL?
+
+    enum CodingKeys: String, CodingKey {
+        case login
+        case avatarURL = "avatar_url"
+    }
+}
+
+/// Entry returned by /repos/{owner}/{repo}/contents (a directory or a file).
+struct RepoContent: Codable, Identifiable, Hashable {
+    let name: String
+    let path: String
+    let type: ContentType
+    let size: Int
+    let downloadURL: URL?
+
+    var id: String { path }
+
+    enum ContentType: String, Codable, Hashable {
+        case dir, file, symlink, submodule
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, path, type, size
+        case downloadURL = "download_url"
+    }
+
+    var isMarkdown: Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ext == "md" || ext == "markdown"
+    }
+}
+
+/// Wrapper of the search endpoint response.
+struct RepoSearchResult: Decodable {
+    let items: [Repo]
+}
+
+// MARK: - Device Flow
+
+struct DeviceCodeResponse: Decodable {
+    let deviceCode: String
+    let userCode: String
+    let verificationURI: URL
+    let expiresIn: Int
+    let interval: Int
+
+    enum CodingKeys: String, CodingKey {
+        case deviceCode = "device_code"
+        case userCode = "user_code"
+        case verificationURI = "verification_uri"
+        case expiresIn = "expires_in"
+        case interval
+    }
+}
+
+struct AccessTokenResponse: Decodable {
+    let accessToken: String?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case error
+    }
+}

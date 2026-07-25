@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="github-markdown.css">
+<link rel="stylesheet" href="katex.min.css">
+<link rel="stylesheet" href="hljs-github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="hljs-github-dark.min.css" media="(prefers-color-scheme: dark)">
+<style>
+  body {
+    margin: 0;
+    padding: 8px 20px 32px;
+    background: transparent;
+  }
+  .markdown-body {
+    box-sizing: border-box;
+    margin: 0;
+    /* Left-aligned, full width; transparent background lets the native
+       window background show through. */
+    background-color: transparent !important;
+  }
+  /* Code blocks scroll horizontally instead of wrapping. */
+  .markdown-body pre {
+    overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+<article id="content" class="markdown-body"></article>
+<script src="markdown-it.min.js"></script>
+<script src="katex.min.js"></script>
+<script src="auto-render.min.js"></script>
+<script src="highlight.min.js"></script>
+<script>
+  const md = markdownit({ html: true, linkify: true, breaks: false });
+
+  // Adjusts the base font size of the rendered content (points).
+  function setFontSize(px) {
+    document.getElementById('content').style.fontSize = px + 'px';
+  }
+
+  // Render entry point, called from the native layer.
+  // markdown: raw Markdown; rawBase: base URL for relative images; blobBase: base URL for relative links
+  function renderMarkdown(markdown, rawBase, blobBase) {
+    const container = document.getElementById('content');
+    container.innerHTML = md.render(markdown);
+
+    // Relative image URLs → absolute raw URLs
+    if (rawBase) {
+      container.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src && !/^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(src)) {
+          img.src = new URL(src, rawBase).href;
+        }
+      });
+    }
+
+    // Relative links → absolute github.com URLs; #anchors stay in-page
+    if (blobBase) {
+      container.querySelectorAll('a').forEach(a => {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        if (!/^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(href)) {
+          a.href = new URL(href, blobBase).href;
+        }
+      });
+    }
+
+    // Math formulas (code blocks are skipped)
+    renderMathInElement(container, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ],
+      ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+      throwOnError: false
+    });
+
+    // Syntax highlighting
+    container.querySelectorAll('pre code').forEach(el => {
+      try { hljs.highlightElement(el); } catch (e) {}
+    });
+  }
+</script>
+</body>
+</html>
