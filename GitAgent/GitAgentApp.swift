@@ -11,12 +11,17 @@ import SwiftUI
 struct GitAgentApp: App {
     @State private var auth = GitHubAuthManager()
     @State private var settings = AppSettings()
+    @State private var chatStore = ChatStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(auth)
                 .environment(settings)
+                .environment(chatStore)
+                // App-wide default font driven by the UI Font Size setting —
+                // exact points (dynamicTypeSize is a no-op on macOS).
+                .font(.system(size: CGFloat(settings.uiFontSize)))
                 #if os(macOS)
                 .onAppear {
                     // Activate at launch so the window comes to the front
@@ -31,6 +36,7 @@ struct GitAgentApp: App {
         Settings {
             SettingsView()
                 .environment(settings)
+                .font(.system(size: CGFloat(settings.uiFontSize)))
         }
         #endif
     }

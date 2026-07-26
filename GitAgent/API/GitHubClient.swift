@@ -37,6 +37,28 @@ final class GitHubClient {
         self.token = token
     }
 
+    // MARK: - Caches (app-session scoped)
+
+    /// Downloaded images (Markdown rendering), ~64 MB cap.
+    private static let imageCache: NSCache<NSURL, CachedImage> = {
+        let cache = NSCache<NSURL, CachedImage>()
+        cache.countLimit = 300
+        cache.totalCostLimit = 64 * 1024 * 1024
+        return cache
+    }()
+
+    /// File/README text — avoids refetching when navigating back and forth.
+    private static let textCache = NSCache<NSString, NSString>()
+
+    final class CachedImage: NSObject {
+        let data: Data
+        let mimeType: String
+        init(data: Data, mimeType: String) {
+            self.data = data
+            self.mimeType = mimeType
+        }
+    }
+
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         let f = ISO8601DateFormatter()
@@ -151,25 +173,140 @@ final class GitHubClient {
         }
     }
 
+    /// True when the path is a directory (the contents endpoint returns a JSON
+    /// array for directories, an object for files). Used to resolve ambiguous
+    /// Markdown links that carry no file extension.
+    func isDirectory(owner: String, repo: String, path: String, ref: String? = nil) async throws -> Bool {
+        var query: [URLQueryItem] = []
+        if let ref { query.append(URLQueryItem(name: "ref", value: ref)) }
+        let (data, response) = try await URLSession.shared.data(
+            for: makeRequest(path: "/repos/\(owner)/\(repo)/contents/\(path)", query: query))
+        try validate(response, data: data)
+        return (try? JSONSerialization.jsonObject(with: data)) is [Any]
+    }
+
     /// Reads a file as plain text. `ref` pins the read to a branch/tag/commit
-    /// (nil reads the default branch).
+    /// (nil reads the default branch). Results are cached for the app session.
     func fileText(owner: String, repo: String, path: String, ref: String? = nil) async throws -> String {
+        let cacheKey = "\(owner)/\(repo)/\(path)#\(ref ?? "")" as NSString
+        if let cached = Self.textCache.object(forKey: cacheKey) { return cached as String }
         var query: [URLQueryItem] = []
         if let ref { query.append(URLQueryItem(name: "ref", value: ref)) }
         let (data, response) = try await URLSession.shared.data(
             for: makeRequest(path: "/repos/\(owner)/\(repo)/contents/\(path)", query: query, raw: true))
         try validate(response, data: data)
         guard let text = String(data: data, encoding: .utf8) else { throw GitHubError.invalidResponse }
+        Self.textCache.setObject(text as NSString, forKey: cacheKey)
         return text
     }
 
     /// Reads the README (returns nil when the repository has none).
     func readme(owner: String, repo: String) async throws -> (name: String, text: String)? {
+        let cacheKey = "\(owner)/\(repo)/README" as NSString
+        if let cached = Self.textCache.object(forKey: cacheKey) { return ("README", cached as String) }
         let request = makeRequest(path: "/repos/\(owner)/\(repo)/readme", raw: true)
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode == 404 { return nil }
         try validate(response, data: data)
         guard let text = String(data: data, encoding: .utf8) else { throw GitHubError.invalidResponse }
+        Self.textCache.setObject(text as NSString, forKey: cacheKey)
         return ("README", text)
+    }
+
+    /// Downloads image (or other binary) content. GitHub hosts get the auth header
+    /// so images in private repositories load too; other hosts are fetched as-is.
+    /// Results are cached so re-rendered Markdown doesn't re-download.
+    func imageData(from url: URL) async throws -> (data: Data, mimeType: String) {
+        if let cached = Self.imageCache.object(forKey: url as NSURL) {
+            return (cached.data, cached.mimeType)
+        }
+        var request = URLRequest(url: url)
+        if let host = url.host()?.lowercased(),
+           host == "github.com" || host.hasSuffix(".githubusercontent.com") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw GitHubError.invalidResponse
+        }
+        let mimeType = http.value(forHTTPHeaderField: "Content-Type")?
+            .split(separator: ";").first.map(String.init) ?? "image/png"
+        Self.imageCache.setObject(CachedImage(data: data, mimeType: mimeType),
+                                  forKey: url as NSURL, cost: data.count)
+        return (data, mimeType)
+    }
+
+    // MARK: - GraphQL (contribution calendar)
+
+    /// Fetches the green-square contribution calendar shown on GitHub profiles
+    /// (last year). GraphQL-only — the REST API doesn't expose it.
+    func contributionCalendar(username: String) async throws -> ContributionCalendar {
+        let query = """
+        query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{date contributionCount contributionLevel}}}}}}
+        """
+        var request = URLRequest(url: GitHubConfig.apiBase.appending(path: "graphql"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(GraphQLRequest(query: query, variables: ["login": username]))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response, data: data)
+        let decoded = try JSONDecoder().decode(GraphQLCalendarResponse.self, from: data)
+        guard let calendar = decoded.data?.user.contributionsCollection.contributionCalendar else {
+            throw GitHubError.invalidResponse
+        }
+        return ContributionCalendar(
+            totalContributions: calendar.totalContributions,
+            weeks: calendar.weeks.map { week in
+                week.contributionDays.map { day in
+                    ContributionCalendar.Day(date: day.date, count: day.contributionCount,
+                                             level: day.contributionLevel.rawValue)
+                }
+            })
+    }
+
+    private struct GraphQLRequest: Encodable {
+        let query: String
+        let variables: [String: String]
+    }
+
+    private struct GraphQLCalendarResponse: Decodable {
+        struct Data: Decodable {
+            struct User: Decodable {
+                struct ContributionsCollection: Decodable {
+                    struct Calendar: Decodable {
+                        struct Week: Decodable {
+                            struct Day: Decodable {
+                                enum Level: Int, Decodable {
+                                    case none = 0, first, second, third, fourth
+
+                                    init(from decoder: Decoder) throws {
+                                        switch try decoder.singleValueContainer().decode(String.self) {
+                                        case "FIRST_QUARTILE": self = .first
+                                        case "SECOND_QUARTILE": self = .second
+                                        case "THIRD_QUARTILE": self = .third
+                                        case "FOURTH_QUARTILE": self = .fourth
+                                        default: self = .none
+                                        }
+                                    }
+                                }
+                                let date: String
+                                let contributionCount: Int
+                                let contributionLevel: Level
+                            }
+                            let contributionDays: [Day]
+                        }
+                        let totalContributions: Int
+                        let weeks: [Week]
+                    }
+                    let contributionCalendar: Calendar
+                }
+                let contributionsCollection: ContributionsCollection
+            }
+            let user: User
+        }
+        let data: Data?
     }
 }

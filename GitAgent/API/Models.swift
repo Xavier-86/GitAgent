@@ -11,9 +11,11 @@ struct GitHubUser: Codable, Hashable {
     let avatarURL: URL?
     let bio: String?
     let publicRepos: Int
+    let followers: Int
+    let following: Int
 
     enum CodingKeys: String, CodingKey {
-        case login, name, bio
+        case login, name, bio, followers, following
         case avatarURL = "avatar_url"
         case publicRepos = "public_repos"
     }
@@ -81,6 +83,19 @@ struct RepoContent: Codable, Identifiable, Hashable {
 /// Wrapper of the search endpoint response.
 struct RepoSearchResult: Decodable {
     let items: [Repo]
+}
+
+/// The green-square contribution calendar shown on GitHub profiles.
+struct ContributionCalendar {
+    struct Day {
+        let date: String
+        let count: Int
+        /// 0 (none) … 4 (fourth quartile), matching GitHub's color scale.
+        let level: Int
+    }
+    let totalContributions: Int
+    /// Up to 53 weeks, each with up to 7 days (Sunday first).
+    let weeks: [[Day]]
 }
 
 // MARK: - Device Flow

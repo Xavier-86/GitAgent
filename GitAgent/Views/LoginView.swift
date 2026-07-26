@@ -8,6 +8,7 @@ import SwiftUI
 struct LoginView: View {
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(AppSettings.self) private var settings
+    @Environment(\.openURL) private var openURL
     @State private var showAuthPage = false
 
     var body: some View {
@@ -18,8 +19,6 @@ struct LoginView: View {
                 .foregroundStyle(.tint)
             Text("GitAgent")
                 .font(.largeTitle.bold())
-            Text(settings.tr(.appTagline))
-                .foregroundStyle(.secondary)
 
             switch auth.state {
             case .loggedOut:
@@ -52,19 +51,29 @@ struct LoginView: View {
 
                 HStack(spacing: 12) {
                     Button {
-                        showAuthPage = true
-                    } label: {
-                        Label(settings.tr(.openAuthPage), systemImage: "person.badge.key")
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button {
                         copyToClipboard(device.userCode)
                     } label: {
                         Label(settings.tr(.copyCode), systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.bordered)
+
+                    Button {
+                        showAuthPage = true
+                    } label: {
+                        Label(settings.tr(.openAuthPage), systemImage: "person.badge.key")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
+
+                // Alternative to the in-app viewer: authorize in the system browser.
+                Button {
+                    openURL(Self.authorizationURL(for: device))
+                } label: {
+                    Label(settings.tr(.openInBrowser), systemImage: "safari")
+                        .font(.callout)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
 
                 HStack(spacing: 8) {
                     ProgressView()
@@ -83,7 +92,7 @@ struct LoginView: View {
                         .font(.callout)
                 }
 
-            case .loggedIn:
+            case .loggedIn, .restoring:
                 EmptyView()
             }
             Spacer()

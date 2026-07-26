@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// Builds the raw.githubusercontent.com base URL used to resolve relative image paths in Markdown.
-private func rawBaseURL(owner: String, repo: String, branch: String, directory: String = "") -> URL? {
+func rawBaseURL(owner: String, repo: String, branch: String, directory: String = "") -> URL? {
     var url = URL(string: "https://raw.githubusercontent.com")!
         .appending(path: owner)
         .appending(path: repo)
@@ -18,7 +18,7 @@ private func rawBaseURL(owner: String, repo: String, branch: String, directory: 
 }
 
 /// Builds the github.com blob base URL used to resolve relative links in Markdown.
-private func githubBlobBaseURL(owner: String, repo: String, branch: String, directory: String = "") -> URL? {
+func githubBlobBaseURL(owner: String, repo: String, branch: String, directory: String = "") -> URL? {
     var url = URL(string: "https://github.com")!
         .appending(path: owner)
         .appending(path: repo)
@@ -39,6 +39,8 @@ struct RepoFileRef: Hashable {
 
     var name: String { (path as NSString).lastPathComponent }
     var directory: String { (path as NSString).deletingLastPathComponent }
+    /// Directory links are marked with a trailing slash (e.g. github.com …/tree/… URLs).
+    var isDirectory: Bool { path.hasSuffix("/") }
     var isMarkdown: Bool {
         let ext = (path as NSString).pathExtension.lowercased()
         return ext == "md" || ext == "markdown"
@@ -52,26 +54,46 @@ struct RepoLinkRef: Hashable {
     let name: String
 }
 
-/// Routes a link tapped in rendered Markdown to in-app navigation (repository/file pages)
-/// or to the in-app web viewer for anything else. No link ever opens a system browser.
-private func handleMarkdownLink(_ link: MarkdownLink,
-                                owner: String, repo: String, branch: String,
-                                navigationPath: Binding<NavigationPath>,
-                                webLink: Binding<IdentifiableURL?>) {
+/// Something opened from a Markdown link or the file browser, shown inline
+/// below the pinned README/Files picker (never pushed — nested NavigationStacks
+/// break the outer stack's pushes on both iOS and macOS).
+enum RepoLinkTarget: Hashable {
+    /// A file — Markdown, plain text, or extension-less (probed before display).
+    case file(RepoFileRef)
+    /// A directory (path without trailing slash).
+    case directory(RepoFileRef)
+    /// Another repository.
+    case repo(RepoLinkRef)
+
+    static func target(for ref: RepoFileRef) -> RepoLinkTarget {
+        if ref.isDirectory {
+            return .directory(RepoFileRef(owner: ref.owner, repo: ref.repo,
+                                          branch: ref.branch, path: String(ref.path.dropLast())))
+        }
+        return .file(ref)
+    }
+}
+
+/// Routes a link tapped in rendered Markdown to an inline navigation target
+/// or to the in-app web viewer. No link ever opens a system browser.
+func handleMarkdownLink(_ link: MarkdownLink,
+                        owner: String, repo: String, branch: String,
+                        onOpenTarget: (RepoLinkTarget) -> Void,
+                        webLink: Binding<IdentifiableURL?>) {
     switch link {
     case .sameRepoFile(let path):
-        navigationPath.wrappedValue.append(RepoFileRef(owner: owner, repo: repo, branch: branch, path: path))
+        onOpenTarget(.target(for: RepoFileRef(owner: owner, repo: repo, branch: branch, path: path)))
     case .repoFile(let ref):
-        navigationPath.wrappedValue.append(ref)
+        onOpenTarget(.target(for: ref))
     case .repo(let linkedOwner, let name):
-        navigationPath.wrappedValue.append(RepoLinkRef(owner: linkedOwner, name: name))
+        onOpenTarget(.repo(RepoLinkRef(owner: linkedOwner, name: name)))
     case .web(let url):
         webLink.wrappedValue = IdentifiableURL(url: url)
     }
 }
 
 /// Loading indicator pinned to the top of the detail area instead of centered.
-private struct TopLoadingView: View {
+struct TopLoadingView: View {
     var label: String? = nil
 
     var body: some View {
@@ -90,57 +112,19 @@ private struct TopLoadingView: View {
     }
 }
 
-/// Loads a repository by owner/name (a tapped github.com link) and then shows it
-/// with the regular `RepoDetailView`.
-struct LinkedRepoView: View {
-    @Environment(GitHubAuthManager.self) private var auth
-    @Environment(AppSettings.self) private var settings
-    let ref: RepoLinkRef
-    let navigationPath: Binding<NavigationPath>
-
-    @State private var repo: Repo?
-    @State private var errorMessage: String?
-
-    var body: some View {
-        Group {
-            if let repo {
-                RepoDetailView(repo: repo, navigationPath: navigationPath)
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button(settings.tr(.retry)) { Task { await load() } }
-                }
-            } else {
-                TopLoadingView(label: settings.tr(.loading))
-            }
-        }
-        .navigationTitle("\(ref.owner)/\(ref.name)")
-        .task { await load() }
-    }
-
-    private func load() async {
-        guard let client = auth.client else { return }
-        errorMessage = nil
-        do {
-            repo = try await client.repo(owner: ref.owner, name: ref.name)
-        } catch GitHubError.unauthorized {
-            auth.logout()
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
+// MARK: - Repository detail
 
 struct RepoDetailView: View {
     @Environment(AppSettings.self) private var settings
     let repo: Repo
-    let navigationPath: Binding<NavigationPath>
 
     @State private var tab: DetailTab = .readme
+    /// Current directory of the Files tab (empty = repository root). Browsing
+    /// directories happens in-place so the README/Files picker stays visible.
+    @State private var filesPath = ""
+    /// Inline stack of content opened from Markdown links — shown below the
+    /// pinned picker instead of replacing the page.
+    @State private var opened: [RepoLinkTarget] = []
 
     enum DetailTab: CaseIterable, Identifiable {
         case readme, files
@@ -158,18 +142,188 @@ struct RepoDetailView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
 
-            switch tab {
-            case .readme:
-                ReadmeView(repo: repo, navigationPath: navigationPath)
-            case .files:
-                FileBrowserView(owner: repo.owner.login, repo: repo.name,
-                                branch: repo.defaultBranch, path: "",
-                                navigationPath: navigationPath)
+            if let top = opened.last {
+                openedHeader(top)
+                openedContent(top)
+                    .id(top)
+            } else {
+                tabContent
             }
         }
         #if os(macOS)
         .navigationTitle(repo.name)
+        #else
+        // Nothing above the pinned README/Files picker on iOS.
+        .toolbar(.hidden, for: .navigationBar)
         #endif
+        .iOSHidesBackButton()
+        // Switching tabs abandons whatever was opened from a link.
+        .onChange(of: tab) { _, _ in opened.removeAll() }
+        #if os(iOS)
+        // While inline link content is open, the nav-level swipe is suspended
+        // (see SwipeBackControl) so a swipe can't skip a level; this drag pops
+        // one inline level instead. The ‹ button in the header is the fallback.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    guard !opened.isEmpty,
+                          value.startLocation.x < 60,
+                          value.translation.width > 50,
+                          abs(value.translation.height) < 80 else { return }
+                    opened.removeLast()
+                }
+        )
+        .onAppear { updateSwipeOverride() }
+        .onChange(of: opened.isEmpty) { _, _ in updateSwipeOverride() }
+        .onDisappear { SwipeBackControl.overridePop = nil }
+        #endif
+    }
+
+    #if os(iOS)
+    private func updateSwipeOverride() {
+        SwipeBackControl.overridePop = opened.isEmpty ? nil : { opened.removeLast() }
+    }
+    #endif
+
+    /// Breadcrumb bar above opened link content: ‹ back + current path.
+    private func openedHeader(_ target: RepoLinkTarget) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                opened.removeLast()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            Text(title(for: target))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 6)
+    }
+
+    private func title(for target: RepoLinkTarget) -> String {
+        switch target {
+        case .file(let ref), .directory(let ref): return ref.path
+        case .repo(let ref): return "\(ref.owner)/\(ref.name)"
+        }
+    }
+
+    @ViewBuilder
+    private func openedContent(_ target: RepoLinkTarget) -> some View {
+        switch target {
+        case .file(let ref):
+            if ref.isMarkdown {
+                MarkdownFileView(ref: ref, onOpenTarget: openTarget)
+            } else if (ref.path as NSString).pathExtension.isEmpty {
+                ResolvedLinkTargetView(ref: ref, onOpenTarget: openTarget)
+            } else {
+                TextFileView(ref: ref)
+            }
+        case .directory(let ref):
+            FileBrowserView(owner: ref.owner, repo: ref.repo, branch: ref.branch,
+                            path: ref.path, onOpenTarget: openTarget)
+        case .repo(let ref):
+            LinkedRepoView(ref: ref)
+        }
+    }
+
+    /// Pushes an inline level (used by every child view's link handling).
+    private var openTarget: (RepoLinkTarget) -> Void {
+        { target in opened.append(target) }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch tab {
+        case .readme:
+            ReadmeView(repo: repo, onOpenTarget: openTarget)
+        case .files:
+            VStack(spacing: 0) {
+                if !filesPath.isEmpty {
+                    // Breadcrumb bar: current directory at the top, tap ‹ to go up.
+                    HStack(spacing: 8) {
+                        Button {
+                            filesPath = (filesPath as NSString).deletingLastPathComponent
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        Text(filesPath)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 6)
+                }
+                FileBrowserView(owner: repo.owner.login, repo: repo.name,
+                                branch: repo.defaultBranch, path: filesPath,
+                                onOpenTarget: { target in
+                                    switch target {
+                                    case .directory(let ref):
+                                        // Directories browse in-place inside the Files tab.
+                                        filesPath = ref.path
+                                    default:
+                                        opened.append(target)
+                                    }
+                                })
+            }
+        }
+    }
+}
+
+// MARK: - Linked repository
+
+/// Loads a repository by owner/name (a tapped github.com link) and then shows it
+/// with the regular `RepoDetailView`.
+struct LinkedRepoView: View {
+    @Environment(GitHubAuthManager.self) private var auth
+    @Environment(AppSettings.self) private var settings
+    let ref: RepoLinkRef
+
+    @State private var repo: Repo?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let repo {
+                RepoDetailView(repo: repo)
+            } else if let errorMessage {
+                ContentUnavailableView {
+                    Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button(settings.tr(.retry)) { Task { await load() } }
+                }
+            } else {
+                TopLoadingView(label: settings.tr(.loading))
+            }
+        }
+        #if os(macOS)
+        .navigationTitle("\(ref.owner)/\(ref.name)")
+        #else
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+        .iOSHidesBackButton()
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let client = auth.client else { return }
+        errorMessage = nil
+        do {
+            repo = try await client.repo(owner: ref.owner, name: ref.name)
+        } catch GitHubError.unauthorized {
+            auth.logout()
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -179,7 +333,7 @@ private struct ReadmeView: View {
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(AppSettings.self) private var settings
     let repo: Repo
-    let navigationPath: Binding<NavigationPath>
+    let onOpenTarget: (RepoLinkTarget) -> Void
 
     @State private var readme: String?
     @State private var isLoading = true
@@ -208,8 +362,9 @@ private struct ReadmeView: View {
                     onOpenLink: { link in
                         handleMarkdownLink(link, owner: repo.owner.login, repo: repo.name,
                                            branch: repo.defaultBranch,
-                                           navigationPath: navigationPath, webLink: $webLink)
+                                           onOpenTarget: onOpenTarget, webLink: $webLink)
                     },
+                    imageLoader: auth.client?.imageData(from:),
                     fontSize: settings.fontSize)
             } else {
                 ContentUnavailableView(settings.tr(.noReadme), systemImage: "doc.text.magnifyingglass")
@@ -235,212 +390,3 @@ private struct ReadmeView: View {
     }
 }
 
-// MARK: - File browser
-
-struct FileBrowserView: View {
-    @Environment(GitHubAuthManager.self) private var auth
-    @Environment(AppSettings.self) private var settings
-    let owner: String
-    let repo: String
-    let branch: String
-    let path: String
-    let navigationPath: Binding<NavigationPath>
-
-    @State private var items: [RepoContent] = []
-    @State private var isLoading = true
-    @State private var errorMessage: String?
-
-    var body: some View {
-        Group {
-            if isLoading {
-                TopLoadingView(label: settings.tr(.loading))
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button(settings.tr(.retry)) { Task { await load() } }
-                }
-            } else if items.isEmpty {
-                ContentUnavailableView(settings.tr(.emptyFolder), systemImage: "folder")
-            } else {
-                List(items) { item in
-                    switch item.type {
-                    case .dir:
-                        NavigationLink {
-                            FileBrowserView(owner: owner, repo: repo, branch: branch, path: item.path,
-                                            navigationPath: navigationPath)
-                        } label: {
-                            Label(item.name, systemImage: "folder")
-                        }
-                    case .file:
-                        NavigationLink {
-                            destinationView(for: item)
-                        } label: {
-                            Label(item.name, systemImage: item.isMarkdown ? "doc.richtext" : "doc.text")
-                        }
-                    default:
-                        Label(item.name, systemImage: "doc")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .navigationTitle(path.isEmpty ? repo : (path as NSString).lastPathComponent)
-        .task { await load() }
-    }
-
-    @ViewBuilder
-    private func destinationView(for item: RepoContent) -> some View {
-        let ref = RepoFileRef(owner: owner, repo: repo, branch: branch, path: item.path)
-        if item.isMarkdown {
-            MarkdownFileView(ref: ref, navigationPath: navigationPath)
-        } else {
-            TextFileView(ref: ref)
-        }
-    }
-
-    private func load() async {
-        guard let client = auth.client else { return }
-        isLoading = true
-        errorMessage = nil
-        do {
-            items = try await client.contents(owner: owner, repo: repo, path: path)
-        } catch GitHubError.unauthorized {
-            auth.logout()
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoading = false
-    }
-}
-
-// MARK: - File content
-
-struct MarkdownFileView: View {
-    @Environment(GitHubAuthManager.self) private var auth
-    @Environment(AppSettings.self) private var settings
-    let ref: RepoFileRef
-    let navigationPath: Binding<NavigationPath>
-
-    @State private var text: String?
-    @State private var errorMessage: String?
-    @State private var webLink: IdentifiableURL?
-
-    var body: some View {
-        Group {
-            if let text {
-                WebMarkdownView(
-                    markdown: text,
-                    rawBaseURL: rawBaseURL(owner: ref.owner, repo: ref.repo, branch: ref.branch,
-                                           directory: ref.directory),
-                    blobBaseURL: githubBlobBaseURL(owner: ref.owner, repo: ref.repo, branch: ref.branch,
-                                                   directory: ref.directory),
-                    onOpenLink: { link in
-                        handleMarkdownLink(link, owner: ref.owner, repo: ref.repo,
-                                           branch: ref.branch,
-                                           navigationPath: navigationPath, webLink: $webLink)
-                    },
-                    fontSize: settings.fontSize)
-            } else if let errorMessage {
-                ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
-                                       description: Text(errorMessage))
-            } else {
-                TopLoadingView()
-            }
-        }
-        .navigationTitle(ref.name)
-        .sheet(item: $webLink) { WebPageView(url: $0.url) }
-        .task { await load() }
-    }
-
-    private func load() async {
-        guard let client = auth.client else { return }
-        do {
-            text = try await client.fileText(owner: ref.owner, repo: ref.repo, path: ref.path, ref: ref.branch)
-        } catch GitHubError.unauthorized {
-            auth.logout()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
-/// Plain-text file preview. Renders through the WebView pipeline as a fenced
-/// code block so it gets syntax highlighting for free.
-struct TextFileView: View {
-    @Environment(GitHubAuthManager.self) private var auth
-    @Environment(AppSettings.self) private var settings
-    let ref: RepoFileRef
-
-    @State private var text: String?
-    @State private var errorMessage: String?
-
-    var body: some View {
-        Group {
-            if let text {
-                WebMarkdownView(
-                    markdown: Self.fenced(text, language: Self.languageName(for: ref.name)),
-                    fontSize: settings.fontSize)
-            } else if let errorMessage {
-                ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
-                                       description: Text(errorMessage))
-            } else {
-                TopLoadingView()
-            }
-        }
-        .navigationTitle(ref.name)
-        .task { await load() }
-    }
-
-    /// Maps a file extension to a highlight.js language identifier.
-    private static func languageName(for filename: String) -> String {
-        switch (filename as NSString).pathExtension.lowercased() {
-        case "swift": return "swift"
-        case "py": return "python"
-        case "js", "mjs", "jsx": return "javascript"
-        case "ts", "tsx": return "typescript"
-        case "cpp", "cc", "cxx", "hpp", "hh", "h": return "cpp"
-        case "c": return "c"
-        case "m", "mm": return "objectivec"
-        case "java": return "java"
-        case "kt", "kts": return "kotlin"
-        case "go": return "go"
-        case "rs": return "rust"
-        case "rb": return "ruby"
-        case "php": return "php"
-        case "cs": return "csharp"
-        case "json": return "json"
-        case "yml", "yaml": return "yaml"
-        case "xml", "html", "htm": return "xml"
-        case "css", "scss", "less": return "css"
-        case "sh", "bash", "zsh": return "bash"
-        case "sql": return "sql"
-        case "toml", "ini", "cfg": return "ini"
-        case "lua": return "lua"
-        case "r": return "r"
-        case "pl": return "perl"
-        default: return "plaintext"
-        }
-    }
-
-    /// Wraps file content in a code fence longer than any backtick run inside it.
-    private static func fenced(_ text: String, language: String) -> String {
-        var fence = "```"
-        while text.contains(fence) { fence += "`" }
-        return "\(fence)\(language)\n\(text)\n\(fence)"
-    }
-
-    private func load() async {
-        guard let client = auth.client else { return }
-        do {
-            text = try await client.fileText(owner: ref.owner, repo: ref.repo, path: ref.path, ref: ref.branch)
-        } catch GitHubError.unauthorized {
-            auth.logout()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}

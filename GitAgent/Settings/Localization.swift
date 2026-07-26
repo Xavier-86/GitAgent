@@ -5,34 +5,19 @@
 
 import Foundation
 
-/// App-wide settings, persisted in UserDefaults.
-@Observable
-final class AppSettings {
-    static let fontSizeKey = "fontSize"
-
-    /// Base font size (points) for rendered Markdown content.
-    var fontSize: Int {
-        didSet { UserDefaults.standard.set(fontSize, forKey: Self.fontSizeKey) }
-    }
-
-    init() {
-        let storedSize = UserDefaults.standard.integer(forKey: Self.fontSizeKey)
-        fontSize = storedSize > 0 ? storedSize : 16
-    }
-
-    /// UI string for a key. The app UI is English-only.
-    func tr(_ key: L10n.Key) -> String {
-        L10n.resolveCurrent(key)
-    }
-}
-
 /// UI string table. The app UI is English-only.
 enum L10n {
     enum Key {
         // Sidebar
-        case myRepos, starred, searchRepos, viewUser, logout, settings, fontSize
+        case myRepos, starred, searchRepos, viewUser, chat, logout, logoutConfirmMessage, settings
+        case uiFontSize, markdownFontSize
+        // Profile
+        case profile, repositories, followers, following, contributions, contributionsLastYear
+        // Kimi chat
+        case kimiSection, kimiAPIKey, kimiBaseURL, kimiModel, provider, refreshModels, agentNeedKey
+        case agentPlaceholder, agentError, chats, newChat, chatEmpty, chatGuideAt, chatGuideSlash, delete
         // Login
-        case appTagline, signIn, deviceCodePrompt, openAuthPage, copyCode, waitingAuth, cancel
+        case signIn, deviceCodePrompt, openAuthPage, openInBrowser, copyCode, waitingAuth, cancel
         // Loading / states
         case loading, loadingReadme, searching, retry, loadFailed, searchFailed
         case noRepos, emptyFolder, noSearchResults, searchReposHint, searchUserHint
@@ -58,13 +43,37 @@ enum L10n {
         .starred: "Starred",
         .searchRepos: "Search Repositories",
         .viewUser: "View User",
+        .chat: "Chat",
+        .profile: "Profile",
+        .repositories: "Repositories",
+        .followers: "Followers",
+        .following: "Following",
+        .contributions: "Contributions",
+        .contributionsLastYear: "contributions in the last year",
+        .kimiSection: "AI Chat",
+        .kimiAPIKey: "API Key",
+        .kimiBaseURL: "Base URL",
+        .kimiModel: "Model",
+        .provider: "Provider",
+        .refreshModels: "Refresh Models",
+        .agentNeedKey: "Enter your API key in Settings to start chatting",
+        .agentPlaceholder: "Ask anything…",
+        .agentError: "Request Failed",
+        .chats: "Chats",
+        .newChat: "New Chat",
+        .chatEmpty: "Start a conversation",
+        .chatGuideAt: "Type @ to reference a repository (adds its README)",
+        .chatGuideSlash: "Type / after choosing a repository to reference files or folders",
+        .delete: "Delete",
         .logout: "Sign Out",
+        .logoutConfirmMessage: "Are you sure you want to sign out?",
         .settings: "Settings",
-        .fontSize: "Font Size",
-        .appTagline: "Sign in with GitHub to browse repositories and read Markdown",
+        .uiFontSize: "UI Font Size",
+        .markdownFontSize: "Markdown Font Size",
         .signIn: "Sign in with GitHub",
         .deviceCodePrompt: "Enter this code on the authorization page to grant access:",
         .openAuthPage: "Authorize GitHub Access",
+        .openInBrowser: "Open in Browser",
         .copyCode: "Copy Code",
         .waitingAuth: "Waiting for authorization…",
         .cancel: "Cancel",

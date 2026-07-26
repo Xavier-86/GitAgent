@@ -16,5 +16,4 @@ enum GitHubConfig {
     static let apiBase = URL(string: "https://api.github.com")!
     static let deviceCodeURL = URL(string: "https://github.com/login/device/code")!
     static let accessTokenURL = URL(string: "https://github.com/login/oauth/access_token")!
-    static let deviceVerificationURL = URL(string: "https://github.com/login/device")!
 }

@@ -35,6 +35,66 @@
 <script>
   const md = markdownit({ html: true, linkify: true, breaks: false });
 
+  // Reports content height to the native layer (chat bubbles size to fit).
+  if (window.webkit && webkit.messageHandlers && webkit.messageHandlers.contentHeight) {
+    const reportHeight = () =>
+      webkit.messageHandlers.contentHeight.postMessage(document.body.scrollHeight);
+    new ResizeObserver(reportHeight).observe(document.body);
+  }
+
+  // In-document anchor jumps (#heading links, e.g. a table of contents).
+  // Headings get GitHub-style slug ids after each render; clicks on fragment
+  // links are resolved here so they never trigger a web view navigation.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || !href.startsWith('#') || href.length < 2) return;
+    e.preventDefault();
+    let id = href.slice(1);
+    try { id = decodeURIComponent(id); } catch (err) {}
+    const target = document.getElementById(id)
+      || document.getElementById('user-content-' + id)
+      || document.getElementsByName(id)[0]
+      || document.getElementsByName('user-content-' + id)[0];
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Assigns GitHub-style slug ids to headings so #anchor links have a target.
+  function addHeadingAnchors(container) {
+    const slugCounts = {};
+    container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+      if (h.id) return;
+      let slug = h.textContent.trim().toLowerCase()
+        .replace(/[^\p{L}\p{N}\p{M}_\- ]/gu, '')
+        .replace(/ /g, '-');
+      const count = slugCounts[slug] || 0;
+      slugCounts[slug] = count + 1;
+      if (count > 0) slug = slug + '-' + count;
+      h.id = slug;
+    });
+  }
+
+  // GitHub-hosted images are loaded natively (with the auth token, so private
+  // repositories work too) and swapped in as data URLs by setImageData().
+  function collectProtectedImages() {
+    if (!(window.webkit && webkit.messageHandlers && webkit.messageHandlers.loadImages)) return;
+    const jobs = [];
+    document.querySelectorAll('#content img').forEach((img, index) => {
+      const src = img.getAttribute('src') || '';
+      if (/^https:\/\/([^/]*\.)?(github\.com|githubusercontent\.com)(\/|$)/.test(src)) {
+        jobs.push({ index: index, url: src });
+      }
+    });
+    if (jobs.length) webkit.messageHandlers.loadImages.postMessage(jobs);
+  }
+
+  // Called from the native layer once an image has been downloaded.
+  function setImageData(index, dataURL) {
+    const img = document.querySelectorAll('#content img')[index];
+    if (img) img.src = dataURL;
+  }
+
   // Adjusts the base font size of the rendered content (points).
   function setFontSize(px) {
     document.getElementById('content').style.fontSize = px + 'px';
@@ -102,6 +162,9 @@
     container.querySelectorAll('pre code').forEach(el => {
       try { hljs.highlightElement(el); } catch (e) {}
     });
+
+    addHeadingAnchors(container);
+    collectProtectedImages();
   }
 </script>
 </body>

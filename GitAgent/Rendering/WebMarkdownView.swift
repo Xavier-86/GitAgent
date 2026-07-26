@@ -13,7 +13,11 @@ import WebKit
 /// is deterministic — katex.min.css resolves fonts via a relative `fonts/` path.
 private enum WebAssets {
     /// Bump this when the bundled assets change to force re-installation.
-    private static let version = "5"
+    private static let version = "7"
+
+    /// Installed once per app launch — web views (one per chat bubble) must
+    /// not hit the file system for the version check on every creation.
+    static let sharedDirectory: URL? = installedDirectory()
 
     private static let assetFiles = [
         "template.html",
@@ -67,6 +71,9 @@ private enum WebAssets {
 
 // MARK: - Link routing
 
+/// Downloads image data for a URL (used to load GitHub-hosted images with auth).
+typealias MarkdownImageLoader = (URL) async throws -> (data: Data, mimeType: String)
+
 /// A link tapped inside rendered Markdown, classified for in-app navigation.
 enum MarkdownLink {
     /// Relative link resolved inside the repository the document belongs to.
@@ -92,6 +99,14 @@ struct WebMarkdownView: View {
     var blobBaseURL: URL? = nil
     /// Called when a link is tapped, enabling in-app navigation.
     var onOpenLink: ((MarkdownLink) -> Void)? = nil
+    /// Downloads GitHub-hosted images natively (adds auth for private repositories).
+    var imageLoader: MarkdownImageLoader? = nil
+    /// Called with the rendered content height (points) whenever it changes —
+    /// lets chat bubbles size the web view to fit.
+    var onContentHeight: ((CGFloat) -> Void)? = nil
+    /// When true the web view doesn't scroll itself and passes scroll events
+    /// through to the enclosing scroll view (chat bubbles).
+    var scrollPassthrough: Bool = false
     /// Base font size of the rendered content, in points.
     var fontSize: Int = 16
 
@@ -100,24 +115,48 @@ struct WebMarkdownView: View {
                              rawBaseURL: rawBaseURL,
                              blobBaseURL: blobBaseURL,
                              onOpenLink: onOpenLink,
+                             imageLoader: imageLoader,
+                             onContentHeight: onContentHeight,
+                             scrollPassthrough: scrollPassthrough,
                              fontSize: fontSize)
     }
 }
 
 // MARK: - Cross-platform wrapper
 
+/// Web view that can hand scroll-wheel events to the enclosing scroll view
+/// instead of consuming them (chat bubbles sized to fit their content).
+private final class PassthroughWebView: WKWebView {
+    var scrollPassthrough = false
+
+    #if canImport(AppKit)
+    override func scrollWheel(with event: NSEvent) {
+        if scrollPassthrough {
+            nextResponder?.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+    #endif
+}
+
 private struct WebViewRepresentable {
     let markdown: String
     let rawBaseURL: URL?
     let blobBaseURL: URL?
     let onOpenLink: ((MarkdownLink) -> Void)?
+    let imageLoader: MarkdownImageLoader?
+    let onContentHeight: ((CGFloat) -> Void)?
+    let scrollPassthrough: Bool
     let fontSize: Int
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let rawBaseURL: URL?
         let blobBaseURL: URL?
         let onOpenLink: ((MarkdownLink) -> Void)?
+        let imageLoader: MarkdownImageLoader?
+        let onContentHeight: ((CGFloat) -> Void)?
 
         var pageLoaded = false
         var lastRenderedMarkdown: String?
@@ -125,11 +164,15 @@ private struct WebViewRepresentable {
         var pendingMarkdown: String?
         /// Latest font size passed from SwiftUI, used when the page finishes loading.
         var currentFontSize = 16
+        weak var webView: WKWebView?
 
-        init(rawBaseURL: URL?, blobBaseURL: URL?, onOpenLink: ((MarkdownLink) -> Void)?) {
+        init(rawBaseURL: URL?, blobBaseURL: URL?, onOpenLink: ((MarkdownLink) -> Void)?,
+             imageLoader: MarkdownImageLoader?, onContentHeight: ((CGFloat) -> Void)?) {
             self.rawBaseURL = rawBaseURL
             self.blobBaseURL = blobBaseURL
             self.onOpenLink = onOpenLink
+            self.imageLoader = imageLoader
+            self.onContentHeight = onContentHeight
         }
 
         // MARK: Rendering
@@ -156,6 +199,35 @@ private struct WebViewRepresentable {
         private static func jsStringOrNull(_ url: URL?) -> String {
             guard let url else { return "null" }
             return jsString(url.absoluteString)
+        }
+
+        // MARK: WKScriptMessageHandler (image loading)
+
+        /// The page posts `[{index, url}]` for GitHub-hosted images; each is downloaded
+        /// natively (with auth, so private repos work) and swapped in as a data URL.
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            // Rendered content height reports (ResizeObserver in the page).
+            if message.name == "contentHeight", let height = message.body as? Double {
+                onContentHeight?(CGFloat(height))
+                return
+            }
+            guard message.name == "loadImages",
+                  let jobs = message.body as? [[String: Any]],
+                  let imageLoader else { return }
+            for job in jobs {
+                guard let index = job["index"] as? Int,
+                      let urlString = job["url"] as? String,
+                      let url = URL(string: urlString) else { continue }
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          let result = try? await imageLoader(url),
+                          let webView = self.webView else { return }
+                    let dataURL = "data:\(result.mimeType);base64,\(result.data.base64EncodedString())"
+                    webView.evaluateJavaScript(
+                        "setImageData(\(index), \(Self.jsString(dataURL)))", completionHandler: nil)
+                }
+            }
         }
 
         // MARK: WKNavigationDelegate
@@ -217,6 +289,13 @@ private struct WebViewRepresentable {
                     let path = segments.dropFirst(4).joined(separator: "/")
                     return .repoFile(RepoFileRef(owner: owner, repo: name, branch: ref, path: path))
                 }
+                // /{owner}/{repo}/tree/{ref}/{path...} → directory view (trailing
+                // slash marks the directory for RepoFileRef.isDirectory)
+                if segments.count >= 5, segments[2] == "tree" {
+                    let ref = segments[3]
+                    let path = segments.dropFirst(4).joined(separator: "/")
+                    return .repoFile(RepoFileRef(owner: owner, repo: name, branch: ref, path: path + "/"))
+                }
                 return .repo(owner: owner, name: name)
             }
             // raw.githubusercontent.com/{owner}/{repo}/{ref}/{path...} → file view
@@ -231,16 +310,23 @@ private struct WebViewRepresentable {
 
     @MainActor
     func makeWebView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(context.coordinator, name: "loadImages")
+        configuration.userContentController.add(context.coordinator, name: "contentHeight")
+        let webView = PassthroughWebView(frame: .zero, configuration: configuration)
+        webView.scrollPassthrough = scrollPassthrough
         webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
         #if canImport(UIKit)
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        // Bubbles sized to fit must not trap scroll touches.
+        webView.scrollView.isScrollEnabled = !scrollPassthrough
         #else
         webView.setValue(false, forKey: "drawsBackground")
         #endif
-        if let dir = WebAssets.installedDirectory() {
+        if let dir = WebAssets.sharedDirectory {
             webView.loadFileURL(dir.appending(path: "template.html"), allowingReadAccessTo: dir)
         }
         return webView
@@ -260,7 +346,9 @@ private struct WebViewRepresentable {
 #if canImport(UIKit)
 extension WebViewRepresentable: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
-        Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL, onOpenLink: onOpenLink)
+        Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL,
+                    onOpenLink: onOpenLink, imageLoader: imageLoader,
+                    onContentHeight: onContentHeight)
     }
     func makeUIView(context: Context) -> WKWebView { makeWebView(context: context) }
     func updateUIView(_ webView: WKWebView, context: Context) { update(webView: webView, context: context) }
@@ -268,7 +356,9 @@ extension WebViewRepresentable: UIViewRepresentable {
 #elseif canImport(AppKit)
 extension WebViewRepresentable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
-        Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL, onOpenLink: onOpenLink)
+        Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL,
+                    onOpenLink: onOpenLink, imageLoader: imageLoader,
+                    onContentHeight: onContentHeight)
     }
     func makeNSView(context: Context) -> WKWebView { makeWebView(context: context) }
     func updateNSView(_ webView: WKWebView, context: Context) { update(webView: webView, context: context) }

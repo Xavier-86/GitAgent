@@ -12,9 +12,14 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if case .loggedIn = auth.state {
+            switch auth.state {
+            case .loggedIn:
                 MainView()
-            } else {
+            case .restoring:
+                // Blank while the stored token is validated — avoids flashing
+                // the login page on cold start.
+                Color.clear
+            default:
                 LoginView()
             }
         }

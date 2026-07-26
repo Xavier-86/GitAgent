@@ -9,6 +9,9 @@ import Observation
 /// Authentication state.
 enum AuthState {
     case loggedOut
+    /// A stored token exists and is still being validated (cold start) —
+    /// the UI shows a blank screen instead of flashing the login page.
+    case restoring
     /// Device code obtained, waiting for the user to authorize in the browser.
     case waitingForAuthorization(DeviceCodeResponse)
     case loggedIn(GitHubUser)
@@ -25,6 +28,7 @@ final class GitHubAuthManager {
 
     init() {
         if let token = KeychainHelper.readToken() {
+            state = .restoring
             let client = GitHubClient(token: token)
             self.client = client
             Task { await loadUser(client: client) }
@@ -85,7 +89,16 @@ final class GitHubAuthManager {
 
         while Date() < deadline {
             try await Task.sleep(for: .seconds(interval))
-            let result = try await requestAccessToken(deviceCode: device.deviceCode)
+            // Tolerate transient network failures — iOS suspends networking
+            // while the app is backgrounded (user authorizing in the external
+            // browser); the poll must survive until the app returns.
+            let result: AccessTokenResponse
+            do {
+                result = try await requestAccessToken(deviceCode: device.deviceCode)
+            } catch {
+                if error is CancellationError { throw error }
+                continue
+            }
 
             if let token = result.accessToken {
                 KeychainHelper.save(token: token)
@@ -138,6 +151,8 @@ final class GitHubAuthManager {
             logout()
         } catch {
             errorMessage = error.localizedDescription
+            // Leave the restoring state so the login page appears.
+            if case .restoring = state { state = .loggedOut }
         }
     }
 

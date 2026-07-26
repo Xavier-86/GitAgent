@@ -7,36 +7,38 @@ import SwiftUI
 
 /// A single repository row.
 struct RepoRow: View {
+    @Environment(AppSettings.self) private var settings
     let repo: Repo
 
     var body: some View {
+        let uiSize = CGFloat(settings.uiFontSize)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: repo.isPrivate ? "lock.fill" : "book.closed")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(.system(size: uiSize - 2))
                 Text(repo.fullName)
-                    .font(.headline)
+                    .font(.system(size: uiSize + 1, weight: .semibold))
                     .lineLimit(1)
             }
             if let description = repo.description, !description.isEmpty {
                 Text(description)
-                    .font(.subheadline)
+                    .font(.system(size: uiSize - 2))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             HStack(spacing: 12) {
                 if let language = repo.language {
                     Text(language)
-                        .font(.caption)
+                        .font(.system(size: uiSize - 4))
                         .foregroundStyle(.secondary)
                 }
                 Label("\(repo.stargazersCount)", systemImage: "star")
-                    .font(.caption)
+                    .font(.system(size: uiSize - 4))
                     .foregroundStyle(.secondary)
                 if let updatedAt = repo.updatedAt {
                     Text(Self.relativeShort(updatedAt))
-                        .font(.caption)
+                        .font(.system(size: uiSize - 4))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -71,6 +73,10 @@ struct RepoListView: View {
                 RepoRow(repo: repo)
             }
         }
+        #if os(iOS)
+        // Tighten the gap between the inline title and the first row.
+        .contentMargins(.top, 8, for: .scrollContent)
+        #endif
     }
 }
 
@@ -106,17 +112,39 @@ struct LoadingRepoListView: View {
         .task { await load() }
     }
 
-    private func load() async {
+    private func load(afterCancel: Bool = false) async {
         guard let client = auth.client else { return }
         isLoading = true
         errorMessage = nil
-        do {
-            repos = try await loader(client)
-        } catch GitHubError.unauthorized {
-            auth.logout()
-            return
-        } catch {
-            errorMessage = error.localizedDescription
+        // The automatic load right after a view appears can fail transiently —
+        // retry once automatically before showing an error.
+        for attempt in 0...1 {
+            do {
+                repos = try await loader(client)
+                break
+            } catch GitHubError.unauthorized {
+                auth.logout()
+                return
+            } catch {
+                // On iOS the split-view push transition cancels the view's task
+                // while the view (and its @State) survives — the request then
+                // dies with a cancellation error. Retry in a fresh task that
+                // isn't bound to the cancelled one.
+                if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                    guard !afterCancel else { break }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
+                        await load(afterCancel: true)
+                    }
+                    return
+                }
+                if attempt == 0, !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    continue
+                }
+                errorMessage = error.localizedDescription
+            }
+            break
         }
         isLoading = false
     }
