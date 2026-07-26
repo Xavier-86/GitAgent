@@ -62,6 +62,9 @@ struct RepoContent: Codable, Identifiable, Hashable {
     let type: ContentType
     let size: Int
     let downloadURL: URL?
+    /// For submodules: the linked repository's git URL (any form: https,
+    /// SCP-style SSH, or relative).
+    let submoduleGitURL: String?
 
     var id: String { path }
 
@@ -72,11 +75,26 @@ struct RepoContent: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case name, path, type, size
         case downloadURL = "download_url"
+        case submoduleGitURL = "submodule_git_url"
     }
 
     var isMarkdown: Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         return ext == "md" || ext == "markdown"
+    }
+
+    /// For submodules: owner/name of the linked repository. Handles
+    /// `https://host/owner/repo.git`, SCP-style SSH (`git@host:owner/repo.git`),
+    /// and relative URLs (`../repo.git`, resolved against `fallbackOwner`).
+    func submoduleRepoRef(fallbackOwner: String) -> RepoLinkRef? {
+        guard type == .submodule, let raw = submoduleGitURL else { return nil }
+        var s = raw.trimmingCharacters(in: .whitespaces)
+        if s.hasSuffix(".git") { s = String(s.dropLast(4)) }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let parts = s.split(whereSeparator: { $0 == "/" || $0 == ":" }).map(String.init)
+        guard parts.count >= 2 else { return nil }
+        let owner = parts[parts.count - 2] == ".." ? fallbackOwner : parts[parts.count - 2]
+        return RepoLinkRef(owner: owner, name: parts[parts.count - 1])
     }
 }
 

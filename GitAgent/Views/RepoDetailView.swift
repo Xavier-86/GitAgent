@@ -223,8 +223,7 @@ struct RepoDetailView: View {
                 TextFileView(ref: ref)
             }
         case .directory(let ref):
-            FileBrowserView(owner: ref.owner, repo: ref.repo, branch: ref.branch,
-                            path: ref.path, onOpenTarget: openTarget)
+            DirectoryContentView(ref: ref, onOpenTarget: openTarget)
         case .repo(let ref):
             LinkedRepoView(ref: ref)
         }

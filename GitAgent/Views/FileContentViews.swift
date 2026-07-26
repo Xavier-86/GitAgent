@@ -55,6 +55,19 @@ struct FileBrowserView: View {
                             Label(item.name, systemImage: item.isMarkdown ? "doc.richtext" : "doc.text")
                         }
                         .foregroundStyle(.primary)
+                    case .submodule:
+                        // A submodule points to another repository — open that.
+                        if let repoRef = item.submoduleRepoRef(fallbackOwner: owner) {
+                            Button {
+                                onOpenTarget(.repo(repoRef))
+                            } label: {
+                                Label(item.name, systemImage: "shippingbox")
+                            }
+                            .foregroundStyle(.primary)
+                        } else {
+                            Label(item.name, systemImage: "shippingbox")
+                                .foregroundStyle(.secondary)
+                        }
                     default:
                         Label(item.name, systemImage: "doc")
                             .foregroundStyle(.secondary)
@@ -86,21 +99,58 @@ struct FileBrowserView: View {
     }
 }
 
+// MARK: - Directory (with submodule redirect)
+
+/// Directory view for link targets. README links to submodules are
+/// directory-shaped — probe once and open the linked repository instead.
+struct DirectoryContentView: View {
+    @Environment(GitHubAuthManager.self) private var auth
+    let ref: RepoFileRef
+    let onOpenTarget: (RepoLinkTarget) -> Void
+
+    @State private var submoduleRef: RepoLinkRef?
+    @State private var checked = false
+
+    var body: some View {
+        Group {
+            if let submoduleRef {
+                LinkedRepoView(ref: submoduleRef)
+            } else if checked {
+                FileBrowserView(owner: ref.owner, repo: ref.repo, branch: ref.branch,
+                                path: ref.path, onOpenTarget: onOpenTarget)
+            } else {
+                TopLoadingView()
+            }
+        }
+        .task {
+            guard let client = auth.client else { return }
+            if let entry = try? await client.submoduleEntry(owner: ref.owner, repo: ref.repo,
+                                                            path: ref.path, ref: ref.branch) {
+                submoduleRef = entry.submoduleRepoRef(fallbackOwner: ref.owner)
+            }
+            checked = true
+        }
+    }
+}
+
 // MARK: - Ambiguous link resolver
 
 /// Resolves an ambiguous Markdown link target (no file extension — could be a
-/// directory like `docs` or an extension-less file like `LICENSE`) by asking
-/// the API, then shows the right view.
+/// directory like `docs`, an extension-less file like `LICENSE`, or a
+/// submodule) by asking the API, then shows the right view.
 struct ResolvedLinkTargetView: View {
     @Environment(GitHubAuthManager.self) private var auth
     let ref: RepoFileRef
     let onOpenTarget: (RepoLinkTarget) -> Void
 
+    @State private var submoduleRef: RepoLinkRef?
     @State private var isDirectory: Bool?
 
     var body: some View {
         Group {
-            if let isDirectory {
+            if let submoduleRef {
+                LinkedRepoView(ref: submoduleRef)
+            } else if let isDirectory {
                 if isDirectory {
                     FileBrowserView(owner: ref.owner, repo: ref.repo, branch: ref.branch,
                                     path: ref.path, onOpenTarget: onOpenTarget)
@@ -113,6 +163,12 @@ struct ResolvedLinkTargetView: View {
         }
         .task {
             guard let client = auth.client else { return }
+            if let entry = try? await client.submoduleEntry(owner: ref.owner, repo: ref.repo,
+                                                            path: ref.path, ref: ref.branch),
+               let repoRef = entry.submoduleRepoRef(fallbackOwner: ref.owner) {
+                submoduleRef = repoRef
+                return
+            }
             isDirectory = (try? await client.isDirectory(owner: ref.owner, repo: ref.repo,
                                                          path: ref.path, ref: ref.branch)) ?? false
         }

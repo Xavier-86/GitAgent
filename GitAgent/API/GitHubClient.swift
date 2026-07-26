@@ -185,6 +185,19 @@ final class GitHubClient {
         return (try? JSONSerialization.jsonObject(with: data)) is [Any]
     }
 
+    /// Returns the entry when the path is a git submodule pointer (the API
+    /// answers a single object, not a list), nil for regular files/dirs.
+    func submoduleEntry(owner: String, repo: String, path: String, ref: String? = nil) async throws -> RepoContent? {
+        var query: [URLQueryItem] = []
+        if let ref { query.append(URLQueryItem(name: "ref", value: ref)) }
+        let (data, response) = try await URLSession.shared.data(
+            for: makeRequest(path: "/repos/\(owner)/\(repo)/contents/\(path)", query: query))
+        try validate(response, data: data)
+        guard let entry = try? decoder.decode(RepoContent.self, from: data),
+              entry.type == .submodule else { return nil }
+        return entry
+    }
+
     /// Reads a file as plain text. `ref` pins the read to a branch/tag/commit
     /// (nil reads the default branch). Results are cached for the app session.
     func fileText(owner: String, repo: String, path: String, ref: String? = nil) async throws -> String {
