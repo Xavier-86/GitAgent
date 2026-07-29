@@ -13,6 +13,8 @@ xcuserdata/
 .build/
 .swiftpm/
 Package.resolved
+# ...but do lock the app's dependency versions:
+!GitAgent.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Archives / export
 *.ipa

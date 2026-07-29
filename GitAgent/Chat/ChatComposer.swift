@@ -421,7 +421,7 @@ private struct FilePickerPanel: View {
 
     @ViewBuilder
     private func row(for item: RepoContent) -> some View {
-        switch item.type {
+        switch item.effectiveType {
         case .dir:
             HStack {
                 Button { path = item.path; highlight = 0 } label: {

@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7AAD48473019D19B00C8DCB1 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000B01 /* Citadel */; };
+		7AAD48483019D19B00C8DCB1 /* NIO in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000B03 /* NIO */; };
+		7AAD48493019D19B00C8DCB1 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000B04 /* NIOSSH */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		7A0000000000000000000A01 /* Build.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Build.xcconfig; sourceTree = "<group>"; };
 		7AF0DE353014820B0011A0A9 /* GitAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GitAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -24,6 +30,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7AAD48493019D19B00C8DCB1 /* NIOSSH in Frameworks */,
+				7AAD48483019D19B00C8DCB1 /* NIO in Frameworks */,
+				7AAD48473019D19B00C8DCB1 /* Citadel in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,6 +76,9 @@
 			);
 			name = GitAgent;
 			packageProductDependencies = (
+				7A0000000000000000000B01 /* Citadel */,
+				7A0000000000000000000B03 /* NIO */,
+				7A0000000000000000000B04 /* NIOSSH */,
 			);
 			productName = GitAgent;
 			productReference = 7AF0DE353014820B0011A0A9 /* GitAgent.app */;
@@ -96,6 +108,11 @@
 			);
 			mainGroup = 7AF0DE2C3014820B0011A0A9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7A0000000000000000000B02 /* XCRemoteSwiftPackageReference "Citadel" */,
+				7A0000000000000000000B05 /* XCRemoteSwiftPackageReference "swift-nio" */,
+				7A0000000000000000000B06 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7AF0DE363014820B0011A0A9 /* Products */;
 			projectDirPath = "";
@@ -262,6 +279,7 @@
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "GitAgent connects to Mac and Linux machines on your local network over SSH.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
@@ -306,6 +324,7 @@
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "GitAgent connects to Mac and Linux machines on your local network over SSH.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
@@ -351,6 +370,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7A0000000000000000000B02 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.1;
+			};
+		};
+		7A0000000000000000000B05 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.81.0;
+			};
+		};
+		7A0000000000000000000B06 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Wellz26/swift-nio-ssh.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.3.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7A0000000000000000000B01 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A0000000000000000000B02 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+		7A0000000000000000000B03 /* NIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A0000000000000000000B05 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIO;
+		};
+		7A0000000000000000000B04 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A0000000000000000000B06 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7AF0DE2D3014820B0011A0A9 /* Project object */;
 }

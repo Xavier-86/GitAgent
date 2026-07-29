@@ -36,6 +36,7 @@ struct ChatView: View {
             }
         }
         .navigationTitle(navigationTitle)
+        .fontSizeShortcuts(get: { settings.fontSize }, set: { settings.fontSize = $0 })
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 16) {

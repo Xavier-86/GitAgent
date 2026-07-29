@@ -62,8 +62,10 @@ struct RepoContent: Codable, Identifiable, Hashable {
     let type: ContentType
     let size: Int
     let downloadURL: URL?
+    let htmlURL: URL?
     /// For submodules: the linked repository's git URL (any form: https,
-    /// SCP-style SSH, or relative).
+    /// SCP-style SSH, or relative). Only present on direct single-path
+    /// lookups, not in directory listings.
     let submoduleGitURL: String?
 
     var id: String { path }
@@ -75,6 +77,7 @@ struct RepoContent: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case name, path, type, size
         case downloadURL = "download_url"
+        case htmlURL = "html_url"
         case submoduleGitURL = "submodule_git_url"
     }
 
@@ -83,11 +86,34 @@ struct RepoContent: Codable, Identifiable, Hashable {
         return ext == "md" || ext == "markdown"
     }
 
-    /// For submodules: owner/name of the linked repository. Handles
-    /// `https://host/owner/repo.git`, SCP-style SSH (`git@host:owner/repo.git`),
-    /// and relative URLs (`../repo.git`, resolved against `fallbackOwner`).
+    /// GitHub misreports submodules as plain `"type": "file"` in directory
+    /// listings — only a direct single-path lookup returns `"submodule"`.
+    /// In a listing, a submodule is the entry with no download URL whose
+    /// html_url points at another repository's tree.
+    var isSubmodule: Bool {
+        type == .submodule || (type == .file && downloadURL == nil && htmlRepoRef != nil)
+    }
+
+    /// Type to switch on in the UI: upgrades listing entries that GitHub
+    /// mislabels as files (submodules) to `.submodule`.
+    var effectiveType: ContentType { isSubmodule ? .submodule : type }
+
+    /// owner/name parsed from an html_url of the form
+    /// `https://github.com/owner/repo/tree/<sha>` (present on submodules).
+    private var htmlRepoRef: RepoLinkRef? {
+        guard let parts = htmlURL?.pathComponents, parts.count >= 4,
+              parts[3] == "tree" else { return nil }
+        return RepoLinkRef(owner: parts[1], name: parts[2])
+    }
+
+    /// For submodules: owner/name of the linked repository. Prefers the
+    /// normalized html_url; otherwise parses `submodule_git_url` (any form:
+    /// `https://host/owner/repo.git`, SCP-style SSH `git@host:owner/repo.git`,
+    /// or relative `../repo.git` resolved against `fallbackOwner`).
     func submoduleRepoRef(fallbackOwner: String) -> RepoLinkRef? {
-        guard type == .submodule, let raw = submoduleGitURL else { return nil }
+        guard isSubmodule else { return nil }
+        if let htmlRepoRef { return htmlRepoRef }
+        guard let raw = submoduleGitURL else { return nil }
         var s = raw.trimmingCharacters(in: .whitespaces)
         if s.hasSuffix(".git") { s = String(s.dropLast(4)) }
         s = s.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

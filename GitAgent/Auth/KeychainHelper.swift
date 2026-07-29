@@ -27,6 +27,12 @@ enum KeychainHelper {
     static func readKimiAPIKey() -> String? { read(account: kimiAccount) }
     static func deleteKimiAPIKey() { delete(account: kimiAccount) }
 
+    // MARK: - SSH host passwords (keyed by host config UUID)
+
+    static func save(sshPassword: String, hostID: String) { save(sshPassword, account: "ssh-password-\(hostID)") }
+    static func readSSHPassword(hostID: String) -> String? { read(account: "ssh-password-\(hostID)") }
+    static func deleteSSHPassword(hostID: String) { delete(account: "ssh-password-\(hostID)") }
+
     // MARK: - Generic plumbing
 
     private static func save(_ value: String, account: String) {

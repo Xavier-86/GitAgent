@@ -21,6 +21,17 @@ func copyToClipboard(_ string: String) {
     #endif
 }
 
+/// Cross-platform clipboard paste.
+func pasteFromClipboard() -> String? {
+    #if canImport(UIKit)
+    return UIPasteboard.general.string
+    #elseif canImport(AppKit)
+    return NSPasteboard.general.string(forType: .string)
+    #else
+    return nil
+    #endif
+}
+
 extension View {
     /// Hides the navigation back button on iOS — navigation is swipe-back only.
     @ViewBuilder
@@ -30,6 +41,25 @@ extension View {
         #else
         self
         #endif
+    }
+
+    /// ⌘- / ⌘= adjust a font-size setting (iOS: hardware keyboard only).
+    /// Two invisible buttons carry the shortcuts — `opacity(0)` keeps them in
+    /// the view hierarchy so the shortcuts still fire (`.hidden()` would not).
+    func fontSizeShortcuts(_ range: ClosedRange<Int> = 12...24,
+                           get: @escaping () -> Int,
+                           set: @escaping (Int) -> Void) -> some View {
+        background {
+            Group {
+                Button("") { set(max(range.lowerBound, get() - 1)) }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("") { set(min(range.upperBound, get() + 1)) }
+                    .keyboardShortcut("=", modifiers: .command)
+            }
+            .opacity(0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 }
 

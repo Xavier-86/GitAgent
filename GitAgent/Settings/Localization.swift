@@ -10,7 +10,7 @@ enum L10n {
     enum Key {
         // Sidebar
         case myRepos, starred, searchRepos, viewUser, chat, logout, logoutConfirmMessage, settings
-        case uiFontSize, markdownFontSize
+        case uiFontSize, markdownFontSize, terminalFontSize
         // Profile
         case profile, repositories, followers, following, contributions, contributionsLastYear
         // Kimi chat
@@ -24,6 +24,9 @@ enum L10n {
         case searchKeywordPrompt, usernamePrompt, noReadme, view, files
         // In-app web viewer
         case done
+        // SSH terminal
+        case terminal, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
+        case sshName, sshCommand, sshCommandInvalid, sshPassword, sshHostEditorTitle, save
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -70,6 +73,7 @@ enum L10n {
         .settings: "Settings",
         .uiFontSize: "UI Font Size",
         .markdownFontSize: "Markdown Font Size",
+        .terminalFontSize: "Terminal Font Size",
         .signIn: "Sign in with GitHub",
         .deviceCodePrompt: "Enter this code on the authorization page to grant access:",
         .openAuthPage: "Authorize GitHub Access",
@@ -94,6 +98,20 @@ enum L10n {
         .view: "View",
         .files: "Files",
         .done: "Done",
+        .terminal: "Terminal",
+        .noHosts: "No Saved Hosts",
+        .sshHostsHint: "Add a Mac or Linux machine to open a remote shell over SSH",
+        .edit: "Edit",
+        .connecting: "Connecting…",
+        .disconnect: "Disconnect",
+        .connectionFailed: "Connection Failed",
+        .back: "Back",
+        .sshName: "Name (optional)",
+        .sshCommand: "SSH Command",
+        .sshCommandInvalid: "Expected e.g. ssh user@host -p 22",
+        .sshPassword: "Password",
+        .sshHostEditorTitle: "SSH Host",
+        .save: "Save",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

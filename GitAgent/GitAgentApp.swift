@@ -12,6 +12,7 @@ struct GitAgentApp: App {
     @State private var auth = GitHubAuthManager()
     @State private var settings = AppSettings()
     @State private var chatStore = ChatStore()
+    @State private var sshHosts = SSHHostStore()
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,7 @@ struct GitAgentApp: App {
                 .environment(auth)
                 .environment(settings)
                 .environment(chatStore)
+                .environment(sshHosts)
                 // App-wide default font driven by the UI Font Size setting —
                 // exact points (dynamicTypeSize is a no-op on macOS).
                 .font(.system(size: CGFloat(settings.uiFontSize)))

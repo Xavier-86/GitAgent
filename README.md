@@ -33,12 +33,47 @@ The current codebase is the foundation the agent is built on — a native GitHub
 - **Repository context via @ and /** — type `@` to pick a repository (adds its README to the prompt), then `/` to attach files or folders from it (a folder contributes its README when it has one). The prompt template puts your text first, referenced content after
 - API keys are always user-entered and stored in the system Keychain — never bundled
 
+**SSH remote terminal is in:**
+
+- Add a host by pasting its `ssh` command line (e.g. `ssh -o PubkeyAuthentication=no user@host -p 2222`) — user/host/port are parsed out automatically; an optional display name can be set and renamed later
+- Passwords go to the system Keychain, one tap on a host row connects
+- Interactive remote shell in-app: a real PTY rendered with xterm.js (vendored, works offline), with resize propagation to the remote host
+- Same code path drives macOS → localhost and iOS/macOS → any LAN machine; host-key verification (TOFU) is still pending — see `GitAgent/SSH/SSH.md`
+
+## Agent architecture — the chosen route
+
+**The remote coding CLI is the brain; the app is the face and the hands.**
+Heavy tasks (compile, test, iterate on a working copy) are dispatched to a
+headless coding CLI (`claude`, Kimi Code) running on a Mac/Linux over **SSH**;
+the app streams the NDJSON events back into the chat UI. There is no daemon
+and no cloud relay — SSH to the target's stock `sshd` is the only transport,
+on iOS and macOS alike (macOS drives itself via SSH to `localhost`, so there
+is exactly one code path). Behavior is steered from outside the CLI: system
+prompts, `AGENTS.md`/`CLAUDE.md`, skills, hooks, and tool allow-lists.
+
+What exists vs. what is planned:
+
+| Piece | Status |
+|---|---|
+| GitHub client foundation (OAuth, repo/file browsing, Markdown) | done |
+| Multi-provider streaming chat UI, Keychain credential storage | done |
+| `SSH/` — SSH transport (connect, PTY shell, xterm.js terminal, hosts in UserDefaults, passwords in Keychain) | done (basic); TOFU host keys, public-key auth, SFTP pending |
+| `Agent/` — orchestration (NDJSON event model, session/resume, CLI relay) | planned |
+| Remote steering (system prompts, AGENTS.md sync, skills, hooks, allow-lists) | planned |
+| Long-task survival (remote `tmux` dispatch, reconnect + resume) | planned |
+| In-app GitHub tool loop + write actions (Git Data API, with confirmation) | planned, light-task path |
+| On-device git engine (libgit2) | deferred — optional offline complement |
+
 ## Roadmap
 
-- **Agent tool-calling loop** — let the model call GitHub tools (list/read/search files) and iterate on its own
-- **Agent write actions** — create branches, commit via the Git Data API, open pull requests — always with user confirmation
-- **Local git engine** — operate real working copies on-device, not just the GitHub API
-- **LAN device control** — discover trusted devices on the local network and let the agent run git operations on their local repositories
+In build order:
+
+1. ~~**SSH transport layer** (`SSH/`)~~ — done: connect, interactive PTY terminal, key-in-Keychain host storage; TOFU host-key verification and public-key auth still open
+2. **Agent orchestration layer** (`Agent/`) — NDJSON event parsing, task sessions, headless CLI invocation with steering flags
+3. **Remote CLI relay** — drive `claude` / Kimi Code on Mac/Linux from iOS and macOS (macOS includes localhost)
+4. **Confirmation + safety loop** — hooks → in-app user confirmation for write actions; host isolation (dedicated user/container)
+5. **Agent write actions on GitHub** — branches/commits/PRs via the Git Data API for tasks that don't need a working copy
+6. **Local git engine** (libgit2, deferred) — on-device working copies for offline editing
 
 ## Requirements
 
@@ -99,6 +134,14 @@ GitAgent/
 │   ├── ChatComposer.swift    # Input bar, @ repo picker, / file picker, chips
 │   ├── ChatReference.swift   # Reference model + prompt template
 │   └── MarkdownBubbleView.swift # Height-fitting Markdown bubble
+├── SSH/
+│   ├── SSHTerminalSession.swift # SSH connect (Citadel) + PTY shell session
+│   ├── SSHHostConfig.swift   # Saved host model (passwords stay in Keychain)
+│   ├── SSHHostStore.swift    # Host list persistence (UserDefaults)
+│   ├── TerminalView.swift    # xterm.js terminal (WKWebView bridge)
+│   ├── SSHView.swift         # Host list, host editor, terminal screen
+│   └── SSH.md                # SSH layer design notes + pending work
+├── Agent/                    # (planned) Agent orchestration — remote CLI as the brain
 ├── Views/
 │   ├── LoginView.swift       # Device-code login (in-app or system browser)
 │   ├── MainView.swift        # Single nav stack (iPhone) / split view (iPad, macOS)

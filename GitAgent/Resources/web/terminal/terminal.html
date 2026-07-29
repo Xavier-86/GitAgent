@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<link rel="stylesheet" href="xterm.min.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #1e1e1e; overflow: hidden; }
+  #terminal { height: 100%; padding: 4px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+<script src="xterm.min.js"></script>
+<script src="addon-fit.min.js"></script>
+<script>
+  const term = new Terminal({
+    fontFamily: '"SF Mono", Menlo, monospace',
+    fontSize: 13,
+    cursorBlink: true,
+    scrollback: 5000,
+    theme: { background: '#1e1e1e' }
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById('terminal'));
+
+  const encoder = new TextEncoder();
+
+  // Keystrokes → native (base64-encoded UTF-8 for binary safety).
+  term.onData(data => {
+    const bytes = encoder.encode(data);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    window.webkit.messageHandlers.terminalInput.postMessage(btoa(bin));
+  });
+
+  // Terminal geometry → native (reported to the remote PTY).
+  term.onResize(size => {
+    window.webkit.messageHandlers.terminalResize.postMessage({ cols: size.cols, rows: size.rows });
+  });
+
+  function refit() { try { fitAddon.fit(); } catch (e) {} }
+  window.addEventListener('resize', refit);
+
+  // Native → terminal. `b64` is a base64-encoded byte string.
+  function termWrite(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    term.write(bytes);
+  }
+
+  // Font size changes apply live (Settings → Terminal Font Size).
+  function setTermFontSize(size) {
+    term.options.fontSize = size;
+    refit();
+  }
+
+  window.addEventListener('load', () => {
+    refit();
+    window.webkit.messageHandlers.terminalReady.postMessage(true);
+  });
+</script>
+</body>
+</html>

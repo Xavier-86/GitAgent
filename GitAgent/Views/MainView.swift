@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SidebarItem: CaseIterable, Identifiable, Hashable {
-    case mine, starred, search, user, chat
+    case mine, starred, search, user, chat, terminal
 
     var id: Self { self }
 
@@ -17,6 +17,7 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         case .search: return .searchRepos
         case .user: return .viewUser
         case .chat: return .chat
+        case .terminal: return .terminal
         }
     }
 
@@ -27,6 +28,7 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         case .search: return "magnifyingglass"
         case .user: return "person"
         case .chat: return "bubble.left.and.bubble.right"
+        case .terminal: return "terminal"
         }
     }
 }
@@ -221,6 +223,8 @@ struct MainView: View {
             UserReposView()
         case .chat:
             ChatView()
+        case .terminal:
+            SSHView()
         }
     }
 }

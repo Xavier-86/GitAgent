@@ -33,6 +33,14 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Stepper(value: terminalFontSizeBinding, in: 9...24) {
+                HStack {
+                    Text(settings.tr(.terminalFontSize))
+                    Spacer()
+                    Text("\(settings.terminalFontSize)")
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Section(settings.tr(.kimiSection)) {
                 Picker(settings.tr(.provider), selection: Binding(
@@ -133,6 +141,13 @@ struct SettingsView: View {
         Binding(
             get: { settings.fontSize },
             set: { settings.fontSize = $0 }
+        )
+    }
+
+    private var terminalFontSizeBinding: Binding<Int> {
+        Binding(
+            get: { settings.terminalFontSize },
+            set: { settings.terminalFontSize = $0 }
         )
     }
 }

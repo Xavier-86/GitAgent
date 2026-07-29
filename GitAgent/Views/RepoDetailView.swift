@@ -159,6 +159,7 @@ struct RepoDetailView: View {
         .iOSHidesBackButton()
         // Switching tabs abandons whatever was opened from a link.
         .onChange(of: tab) { _, _ in opened.removeAll() }
+        .fontSizeShortcuts(get: { settings.fontSize }, set: { settings.fontSize = $0 })
         #if os(iOS)
         // While inline link content is open, the nav-level swipe is suspended
         // (see SwipeBackControl) so a swipe can't skip a level; this drag pops

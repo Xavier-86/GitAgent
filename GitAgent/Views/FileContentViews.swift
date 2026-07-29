@@ -40,13 +40,16 @@ struct FileBrowserView: View {
                 ContentUnavailableView(settings.tr(.emptyFolder), systemImage: "folder")
             } else {
                 List(items) { item in
-                    switch item.type {
+                    switch item.effectiveType {
                     case .dir:
                         Button {
                             onOpenTarget(.directory(makeRef(for: item)))
                         } label: {
                             Label(item.name, systemImage: "folder")
                         }
+                        // plain: iOS 26 would otherwise draw a tinted capsule
+                        // background behind every list-row button.
+                        .buttonStyle(.plain)
                         .foregroundStyle(.primary)
                     case .file:
                         Button {
@@ -54,6 +57,7 @@ struct FileBrowserView: View {
                         } label: {
                             Label(item.name, systemImage: item.isMarkdown ? "doc.richtext" : "doc.text")
                         }
+                        .buttonStyle(.plain)
                         .foregroundStyle(.primary)
                     case .submodule:
                         // A submodule points to another repository — open that.
@@ -63,6 +67,7 @@ struct FileBrowserView: View {
                             } label: {
                                 Label(item.name, systemImage: "shippingbox")
                             }
+                            .buttonStyle(.plain)
                             .foregroundStyle(.primary)
                         } else {
                             Label(item.name, systemImage: "shippingbox")
@@ -211,6 +216,7 @@ struct MarkdownFileView: View {
             }
         }
         .sheet(item: $webLink) { WebPageView(url: $0.url) }
+        .fontSizeShortcuts(get: { settings.fontSize }, set: { settings.fontSize = $0 })
         .task { await load() }
     }
 
@@ -251,6 +257,7 @@ struct TextFileView: View {
                 TopLoadingView()
             }
         }
+        .fontSizeShortcuts(get: { settings.fontSize }, set: { settings.fontSize = $0 })
         .task { await load() }
     }
 

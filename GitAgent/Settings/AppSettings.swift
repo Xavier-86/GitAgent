@@ -10,6 +10,7 @@ import Foundation
 final class AppSettings {
     static let fontSizeKey = "fontSize"
     static let uiFontSizeKey = "uiFontSize"
+    static let terminalFontSizeKey = "terminalFontSize"
     static let kimiBaseURLKey = "kimiBaseURL"
     static let kimiModelKey = "kimiModel"
     static let chatProviderKey = "chatProvider"
@@ -22,6 +23,11 @@ final class AppSettings {
     /// Base font size (points) for the app UI itself (lists, labels, buttons).
     var uiFontSize: Int {
         didSet { UserDefaults.standard.set(uiFontSize, forKey: Self.uiFontSizeKey) }
+    }
+
+    /// Font size (points) of the SSH terminal (xterm.js).
+    var terminalFontSize: Int {
+        didSet { UserDefaults.standard.set(terminalFontSize, forKey: Self.terminalFontSizeKey) }
     }
 
     /// Selected LLM provider. Switching providers resets the base URL and
@@ -63,6 +69,8 @@ final class AppSettings {
         fontSize = storedSize > 0 ? storedSize : 16
         let storedUISize = UserDefaults.standard.integer(forKey: Self.uiFontSizeKey)
         uiFontSize = storedUISize > 0 ? storedUISize : 16
+        let storedTerminalSize = UserDefaults.standard.integer(forKey: Self.terminalFontSizeKey)
+        terminalFontSize = storedTerminalSize > 0 ? storedTerminalSize : 13
         let storedProvider = UserDefaults.standard.string(forKey: Self.chatProviderKey) ?? ""
         chatProvider = ChatProvider(rawValue: storedProvider) ?? .kimiCode
         kimiAPIKey = KeychainHelper.readKimiAPIKey() ?? ""

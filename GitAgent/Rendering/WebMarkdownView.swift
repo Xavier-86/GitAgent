@@ -9,11 +9,12 @@ import WebKit
 // MARK: - Web asset installation
 
 /// Copies the rendering assets bundled with the app (markdown-it / KaTeX /
-/// highlight.js / CSS / fonts) into Application Support so the on-disk layout
-/// is deterministic — katex.min.css resolves fonts via a relative `fonts/` path.
-private enum WebAssets {
+/// highlight.js / CSS / fonts, plus the xterm.js terminal page) into
+/// Application Support so the on-disk layout is deterministic —
+/// katex.min.css resolves fonts via a relative `fonts/` path.
+enum WebAssets {
     /// Bump this when the bundled assets change to force re-installation.
-    private static let version = "7"
+    private static let version = "9"
 
     /// Installed once per app launch — web views (one per chat bubble) must
     /// not hit the file system for the version check on every creation.
@@ -29,6 +30,11 @@ private enum WebAssets {
         "highlight.min.js",
         "hljs-github.min.css",
         "hljs-github-dark.min.css",
+        // SSH terminal (xterm.js).
+        "terminal.html",
+        "xterm.min.js",
+        "xterm.min.css",
+        "addon-fit.min.js",
     ]
 
     static func installedDirectory() -> URL? {
