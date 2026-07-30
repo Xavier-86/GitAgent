@@ -25,8 +25,17 @@ enum L10n {
         // In-app web viewer
         case done
         // SSH terminal
-        case terminal, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
+        case terminal, localShell, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
         case sshName, sshCommand, sshCommandInvalid, sshPassword, sshHostEditorTitle, save
+        // Repository locations
+        case repositoryLocations, noRepositoryLocations, repositoryLocationsHint
+        case addRepositoryLocation, computer, selectComputer, repositoryPath, repositoryPathHint
+        case repositoryPathFooter, saveAndVerify, verify, verifying, connected, notConnected
+        case computerUnavailable, sshPasswordMissing, repositoryPathMissing, notGitRepository
+        case noGitHubRemote, repositoryRemoteUnreachable, invalidRepositoryProbe
+        case agentConfigured, agentNotConfigured, thisMac
+        case addSSHHostFirst, chooseFolder, localRepositoryPathFooter
+        case localRepositoryAccessDenied, folderSelectionFailed
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -39,6 +48,10 @@ enum L10n {
 
     static func requestFailed(status: Int, message: String) -> String {
         String(format: "Request failed (%d): %@", status, message)
+    }
+
+    static func repositoryMismatch(expected: String, found: String) -> String {
+        "Expected \(expected), but the Git remote points to \(found)."
     }
 
     private static let strings: [Key: String] = [
@@ -99,6 +112,7 @@ enum L10n {
         .files: "Files",
         .done: "Done",
         .terminal: "Terminal",
+        .localShell: "Local Shell",
         .noHosts: "No Saved Hosts",
         .sshHostsHint: "Add a Mac or Linux machine to open a remote shell over SSH",
         .edit: "Edit",
@@ -112,6 +126,35 @@ enum L10n {
         .sshPassword: "Password",
         .sshHostEditorTitle: "SSH Host",
         .save: "Save",
+        .repositoryLocations: "Repository Locations",
+        .noRepositoryLocations: "No Repository Locations",
+        .repositoryLocationsHint: "Connect this GitHub repository to a working tree on this Mac or an SSH host.",
+        .addRepositoryLocation: "Add Repository Location",
+        .computer: "Computer",
+        .selectComputer: "Select a computer",
+        .repositoryPath: "Repository Path",
+        .repositoryPathHint: "~/Developer/repository",
+        .repositoryPathFooter: "The path is checked on the selected SSH host.",
+        .localRepositoryPathFooter: "Choose the repository folder on this Mac to grant read access.",
+        .saveAndVerify: "Save & Verify",
+        .verify: "Verify",
+        .verifying: "Verifying…",
+        .connected: "Connected",
+        .notConnected: "Not Connected",
+        .computerUnavailable: "Computer Not Available",
+        .sshPasswordMissing: "No SSH password is saved for this computer.",
+        .repositoryPathMissing: "The specified directory does not exist.",
+        .notGitRepository: "The specified directory is not a Git working tree.",
+        .noGitHubRemote: "The working tree has no GitHub remote.",
+        .repositoryRemoteUnreachable: "The Git remote could not be reached from this computer.",
+        .invalidRepositoryProbe: "The computer returned an invalid repository status.",
+        .agentConfigured: "Agent repository location connected",
+        .agentNotConfigured: "Agent repository location not connected",
+        .thisMac: "This Mac",
+        .addSSHHostFirst: "Add an SSH host in Terminal before configuring a repository location.",
+        .chooseFolder: "Choose…",
+        .localRepositoryAccessDenied: "GitAgent can no longer access this folder. Delete this location and choose the folder again.",
+        .folderSelectionFailed: "Could not access the selected folder",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

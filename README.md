@@ -22,7 +22,7 @@ Git is everywhere, but driving it is still manual: every device has its own repo
 The current codebase is the foundation the agent is built on — a native GitHub client:
 
 - GitHub sign-in via OAuth Device Flow (in-app browser or system browser, token in the system Keychain)
-- Browse your own/private repositories, global search, view any user's repos
+- Browse your own/private repositories and repositories you have starred
 - In-app repository browser: README and file preview with full Markdown rendering, in-document anchor jumps, and link routing that keeps everything inside the app (files, folders, and repos open below the pinned README/Files picker)
 - Profile view with the GitHub contribution graph (GraphQL)
 
@@ -33,12 +33,26 @@ The current codebase is the foundation the agent is built on — a native GitHub
 - **Repository context via @ and /** — type `@` to pick a repository (adds its README to the prompt), then `/` to attach files or folders from it (a folder contributes its README when it has one). The prompt template puts your text first, referenced content after
 - API keys are always user-entered and stored in the system Keychain — never bundled
 
-**SSH remote terminal is in:**
+**Local and SSH terminals are in:**
 
+- On macOS, Terminal includes **This Mac** and starts the user's login shell in a native pseudo-terminal; no localhost SSH account or Remote Login setup is required. It matches Terminal.app: dotfiles load, the shell starts in your home directory (or directly in a repository folder), and your full toolchain (Homebrew, conda, …) works — the macOS app is intentionally **not sandboxed**, because a sandboxed child shell gets none of that
 - Add a host by pasting its `ssh` command line (e.g. `ssh -o PubkeyAuthentication=no user@host -p 2222`) — user/host/port are parsed out automatically; an optional display name can be set and renamed later
+- When `-p` is omitted, GitAgent preserves the command as `ssh user@host` and does not append `:22` or `-p 22` in the editor or host list; the connection still uses SSH's standard default port 22
+- Non-default SSH ports must be supplied explicitly with `-p <port>` and are then preserved and displayed
 - Passwords go to the system Keychain, one tap on a host row connects
-- Interactive remote shell in-app: a real PTY rendered with xterm.js (vendored, works offline), with resize propagation to the remote host
-- Same code path drives macOS → localhost and iOS/macOS → any LAN machine; host-key verification (TOFU) is still pending — see `GitAgent/SSH/SSH.md`
+- Local and remote shells share the same in-app xterm.js renderer (vendored, works offline), with terminal resize propagated to the active PTY and momentum touch scrolling on iOS
+- iOS/macOS can connect to Mac/Linux SSH hosts across the LAN; host-key verification (TOFU) is still pending — see `GitAgent/SSH/SSH.md`
+
+**Repository locations are in:**
+
+- Every GitHub repository has an Agent status button: green means at least one configured working tree passed the current verification rules; red means none has
+- A repository can be linked to multiple working trees — folders selected directly on this Mac, or paths on saved Mac/Linux SSH hosts
+- macOS folders are chosen through the system folder picker and persisted as security-scoped bookmarks; since the app is not sandboxed this is a convenience for re-opening folders, not a file-access restriction
+- Local verification checks the selected directory, Git metadata, and an exact GitHub remote match, then makes an uncached authenticated GitHub API request to prove that the target repository is currently reachable
+- SSH verification logs into the selected host, resolves the Git root, checks the remote identity, runs non-interactive `git ls-remote` from that host, and confirms the repository through the GitHub API
+- Selecting a connected working tree closes the location sheet, switches to Terminal, and opens the matching local or SSH shell at the repository path (the local shell starts there directly; the SSH shell runs `cd` after its PTY is ready)
+- Direct local locations open the native macOS shell while retaining the folder's security-scoped bookmark for the lifetime of the terminal session; they do not require a saved localhost SSH host
+- Local verification reads Git metadata directly and does not run Git, so proving that the Mac's command-line Git credentials can fetch remains separate from the connection check
 
 ## Agent architecture — the chosen route
 
@@ -58,6 +72,7 @@ What exists vs. what is planned:
 | GitHub client foundation (OAuth, repo/file browsing, Markdown) | done |
 | Multi-provider streaming chat UI, Keychain credential storage | done |
 | `SSH/` — SSH transport (connect, PTY shell, xterm.js terminal, hosts in UserDefaults, passwords in Keychain) | done (basic); TOFU host keys, public-key auth, SFTP pending |
+| Repository locations — GitHub repo ↔ local/SSH working trees, verification, native local/SSH Terminal deep link | done (basic) |
 | `Agent/` — orchestration (NDJSON event model, session/resume, CLI relay) | planned |
 | Remote steering (system prompts, AGENTS.md sync, skills, hooks, allow-lists) | planned |
 | Long-task survival (remote `tmux` dispatch, reconnect + resume) | planned |
@@ -69,11 +84,12 @@ What exists vs. what is planned:
 In build order:
 
 1. ~~**SSH transport layer** (`SSH/`)~~ — done: connect, interactive PTY terminal, key-in-Keychain host storage; TOFU host-key verification and public-key auth still open
-2. **Agent orchestration layer** (`Agent/`) — NDJSON event parsing, task sessions, headless CLI invocation with steering flags
-3. **Remote CLI relay** — drive `claude` / Kimi Code on Mac/Linux from iOS and macOS (macOS includes localhost)
-4. **Confirmation + safety loop** — hooks → in-app user confirmation for write actions; host isolation (dedicated user/container)
-5. **Agent write actions on GitHub** — branches/commits/PRs via the Git Data API for tasks that don't need a working copy
-6. **Local git engine** (libgit2, deferred) — on-device working copies for offline editing
+2. ~~**Repository location layer** (`Locations/`)~~ — done: associate one or more local/SSH working trees, verify GitHub remotes, and open connected paths in the matching local or SSH Terminal
+3. **Agent orchestration layer** (`Agent/`) — NDJSON event parsing, task sessions, headless CLI invocation with steering flags
+4. **Remote CLI relay** — drive `claude` / Kimi Code on Mac/Linux from iOS and macOS (macOS includes localhost)
+5. **Confirmation + safety loop** — hooks → in-app user confirmation for write actions; host isolation (dedicated user/container)
+6. **Agent write actions on GitHub** — branches/commits/PRs via the Git Data API for tasks that don't need a working copy
+7. **Local git engine** (libgit2, deferred) — on-device working copies for offline editing
 
 ## Requirements
 
@@ -136,16 +152,22 @@ GitAgent/
 │   └── MarkdownBubbleView.swift # Height-fitting Markdown bubble
 ├── SSH/
 │   ├── SSHTerminalSession.swift # SSH connect (Citadel) + PTY shell session
+│   ├── LocalTerminalSession.swift # macOS login shell in a native local PTY
 │   ├── SSHHostConfig.swift   # Saved host model (passwords stay in Keychain)
 │   ├── SSHHostStore.swift    # Host list persistence (UserDefaults)
 │   ├── TerminalView.swift    # xterm.js terminal (WKWebView bridge)
+│   ├── TerminalLaunchCoordinator.swift # Repository location → Terminal routing
 │   ├── SSHView.swift         # Host list, host editor, terminal screen
 │   └── SSH.md                # SSH layer design notes + pending work
+├── Locations/
+│   ├── RepositoryLocation.swift # Persisted GitHub repo ↔ working-tree links
+│   ├── RepositoryLocationVerifier.swift # Local/SSH Git and remote checks
+│   └── RepositoryLocationsView.swift # Add, verify, delete, and open locations
 ├── Agent/                    # (planned) Agent orchestration — remote CLI as the brain
 ├── Views/
 │   ├── LoginView.swift       # Device-code login (in-app or system browser)
 │   ├── MainView.swift        # Single nav stack (iPhone) / split view (iPad, macOS)
-│   ├── RepoListView.swift    # Repo lists, search, user lookup
+│   ├── RepoListView.swift    # Repository lists + Agent location status
 │   ├── RepoDetailView.swift  # README tab + inline link navigation
 │   ├── FileContentViews.swift # File browser + file viewers
 │   ├── UserProfileView.swift # Profile + contribution graph
@@ -164,6 +186,7 @@ GitAgent/
 
 ## Notes
 
+- The macOS app is not sandboxed (`ENABLE_APP_SANDBOX = NO` in the project — with `CODE_SIGN_INJECT_BASE_ENTITLEMENTS`, that build setting controls the injected sandbox entitlement, not the entitlements file). A sandboxed child shell cannot read the user's dotfiles or run tools outside the container, so the local terminal could never match Terminal.app; treat the local shell as having the same power as Terminal.app.
 - Rendering assets are bundled in the app and installed to Application Support on first launch. If you update files under `Resources/web/`, bump `WebAssets.version` in `Rendering/WebMarkdownView.swift` to force re-installation.
 - The OAuth token and LLM API keys are only ever stored in the system Keychain.
 - iPhone uses a single `NavigationStack` instead of a collapsed split view on purpose: the split view runs two competing back-gesture systems and pops two levels per swipe.

@@ -163,6 +163,7 @@ struct ChatView: View {
                 var pendingContent = ""
                 var pendingReasoning = ""
                 var lastFlush = Date.distantPast
+                @MainActor
                 func flush() {
                     guard !pendingContent.isEmpty || !pendingReasoning.isEmpty else { return }
                     let content = pendingContent, reasoning = pendingReasoning

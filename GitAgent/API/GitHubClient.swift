@@ -146,6 +146,22 @@ final class GitHubClient {
         try await get(Repo.self, path: "/repos/\(owner)/\(name)")
     }
 
+    /// Performs an uncached request so repository-location checks prove that
+    /// GitHub is reachable now rather than accepting a cached API response.
+    func verifyRepoConnection(owner: String, name: String) async throws -> Repo {
+        var request = makeRequest(path: "/repos/\(owner)/\(name)")
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response, data: data)
+        do {
+            return try decoder.decode(Repo.self, from: data)
+        } catch {
+            throw GitHubError.invalidResponse
+        }
+    }
+
     /// Global repository search.
     func searchRepos(keyword: String) async throws -> [Repo] {
         let result = try await get(RepoSearchResult.self, path: "/search/repositories", query: [

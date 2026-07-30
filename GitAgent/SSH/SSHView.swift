@@ -2,23 +2,35 @@
 //  SSHView.swift
 //  GitAgent
 //
-//  SSH screen: saved hosts → connect → interactive remote terminal.
+//  Terminal screen: local macOS shell or saved SSH host → interactive PTY.
 //
 
 import SwiftUI
 
+private enum ActiveTerminalKind {
+    case ssh
+    case local
+}
+
 struct SSHView: View {
     @Environment(SSHHostStore.self) private var store
     @Environment(AppSettings.self) private var settings
+    @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
 
     @State private var session = SSHTerminalSession()
+    #if os(macOS)
+    @State private var localSession = LocalTerminalSession()
+    #endif
     @State private var bridge = TerminalBridge()
+    @State private var activeTerminal: ActiveTerminalKind = .ssh
     @State private var activeHost: SSHHostConfig?
+    @State private var activeDirectory: String?
+    @State private var activeLocalBookmark: Data?
     @State private var editingHost: SSHHostConfig?
 
     var body: some View {
         Group {
-            switch session.state {
+            switch terminalState {
             case .disconnected:
                 hostList
             case .connecting, .connected:
@@ -37,15 +49,36 @@ struct SSHView: View {
                 store.save(updated, password: password)
             }
         }
-        // Leaving the screen drops the connection — iOS suspends sockets in
-        // the background anyway, so a terminal can't survive navigation.
-        .onDisappear { session.disconnect() }
+        .task(id: terminalLauncher.request?.id) {
+            guard let request = terminalLauncher.request else { return }
+            switch request.target {
+            case .ssh(let hostID):
+                if let host = store.hosts.first(where: { $0.id == hostID }) {
+                    connect(to: host, directory: request.directory)
+                }
+            case .local(let bookmarkData):
+                #if os(macOS)
+                connectLocal(
+                    directory: request.directory,
+                    bookmarkData: bookmarkData
+                )
+                #endif
+            }
+            terminalLauncher.consume(request.id)
+        }
+        .onDisappear { disconnectAll() }
     }
 
     // MARK: - Host list
 
     private var hostList: some View {
         Group {
+            #if os(macOS)
+            List {
+                localTerminalRow
+                sshHostRows
+            }
+            #else
             if store.hosts.isEmpty {
                 ContentUnavailableView {
                     Label(settings.tr(.noHosts), systemImage: "server.rack")
@@ -54,42 +87,10 @@ struct SSHView: View {
                 }
             } else {
                 List {
-                    ForEach(store.hosts) { host in
-                        HStack(spacing: 12) {
-                            Image(systemName: "server.rack")
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading) {
-                                Text(host.displayName)
-                                Text(verbatim: "\(host.username)@\(host.host):\(host.port)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        // Whole row is the tap target — no button capsule.
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if host.isConnectable { connect(to: host) }
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                store.delete(host)
-                            } label: {
-                                Label(settings.tr(.delete), systemImage: "trash")
-                            }
-                            Button {
-                                editingHost = host
-                            } label: {
-                                Label(settings.tr(.edit), systemImage: "pencil")
-                            }
-                        }
-                    }
+                    sshHostRows
                 }
             }
+            #endif
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -102,12 +103,115 @@ struct SSHView: View {
         }
     }
 
+    #if os(macOS)
+    private var localTerminalRow: some View {
+        Button {
+            connectLocal(directory: nil, bookmarkData: nil)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "desktopcomputer")
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading) {
+                    Text(settings.tr(.thisMac))
+                    Text(settings.tr(.localShell))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    #endif
+
+    @ViewBuilder
+    private var sshHostRows: some View {
+        ForEach(store.hosts) { host in
+            Group {
+                #if os(iOS)
+                Button {
+                    if host.isConnectable {
+                        connect(to: host, directory: nil)
+                    }
+                } label: {
+                    sshHostRowContent(host)
+                }
+                .buttonStyle(.plain)
+                #else
+                sshHostRowContent(host)
+                    .onTapGesture {
+                        if host.isConnectable {
+                            connect(to: host, directory: nil)
+                        }
+                    }
+                #endif
+            }
+            .contextMenu {
+                Button {
+                    editingHost = host
+                } label: {
+                    Label(settings.tr(.edit), systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    store.delete(host)
+                } label: {
+                    Label(settings.tr(.delete), systemImage: "trash")
+                }
+            }
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    store.delete(host)
+                } label: {
+                    Label(settings.tr(.delete), systemImage: "trash")
+                }
+                Button {
+                    editingHost = host
+                } label: {
+                    Label(settings.tr(.edit), systemImage: "pencil")
+                }
+            }
+        }
+    }
+
+    private func sshHostRowContent(_ host: SSHHostConfig) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "server.rack")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading) {
+                Text(host.displayName)
+                Text(verbatim: host.connectionDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            #if os(macOS)
+            Button {
+                editingHost = host
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .help(settings.tr(.edit))
+            #endif
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
     // MARK: - Terminal
 
     private var terminalArea: some View {
         ZStack {
             TerminalView(bridge: bridge, fontSize: settings.terminalFontSize)
-            if session.state == .connecting {
+            if terminalState == .connecting {
                 ProgressView(settings.tr(.connecting))
                     .padding()
                     .background(.regularMaterial, in: .rect(cornerRadius: 12))
@@ -116,7 +220,7 @@ struct SSHView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(settings.tr(.disconnect), role: .destructive) {
-                    session.disconnect()
+                    disconnectActive()
                 }
             }
         }
@@ -131,34 +235,103 @@ struct SSHView: View {
         } description: {
             Text(message)
         } actions: {
-            if let activeHost {
-                Button(settings.tr(.retry)) { connect(to: activeHost) }
+            Button(settings.tr(.retry)) {
+                if activeTerminal == .ssh, let activeHost {
+                    connect(to: activeHost, directory: activeDirectory)
+                } else {
+                    #if os(macOS)
+                    connectLocal(
+                        directory: activeDirectory,
+                        bookmarkData: activeLocalBookmark
+                    )
+                    #endif
+                }
             }
-            Button(settings.tr(.back)) { session.disconnect() }
+            Button(settings.tr(.back)) { disconnectActive() }
         }
     }
 
     // MARK: - Connect
 
-    private func connect(to host: SSHHostConfig) {
+    private func connect(to host: SSHHostConfig, directory: String?) {
         guard let password = store.password(for: host), !password.isEmpty else {
             // No password saved yet — open the editor to collect it first.
             editingHost = host
             return
         }
+        #if os(macOS)
+        localSession.disconnect()
+        #endif
+        activeTerminal = .ssh
         activeHost = host
+        activeDirectory = directory
+        activeLocalBookmark = nil
         session.disconnect()
+        bridge.reset()
         session.onOutput = { [weak bridge] data in bridge?.write(data) }
         bridge.onInput = { [weak session] data in session?.send(data) }
         bridge.onResize = { [weak session] cols, rows in session?.resize(cols: cols, rows: rows) }
-        session.connect(host: host, password: password)
+        let initialInput = directory.map {
+            Data("cd \(shellQuote($0))\n".utf8)
+        }
+        session.connect(host: host, password: password, initialInput: initialInput)
+    }
+
+    #if os(macOS)
+    private func connectLocal(directory: String?, bookmarkData: Data?) {
+        session.disconnect()
+        activeTerminal = .local
+        activeHost = nil
+        activeDirectory = directory
+        activeLocalBookmark = bookmarkData
+        localSession.disconnect()
+        bridge.reset()
+        localSession.onOutput = { [weak bridge] data in bridge?.write(data) }
+        bridge.onInput = { [weak localSession] data in localSession?.send(data) }
+        bridge.onResize = { [weak localSession] cols, rows in
+            localSession?.resize(cols: cols, rows: rows)
+        }
+        localSession.connect(directory: directory, bookmarkData: bookmarkData)
+        // Start with a clean screen: queue Ctrl+L (clear-screen) so the shell
+        // redraws an empty screen with a fresh prompt once it is up.
+        localSession.send(Data([0x0C]))
+    }
+    #endif
+
+    private var terminalState: TerminalSessionState {
+        #if os(macOS)
+        if activeTerminal == .local {
+            return localSession.state
+        }
+        #endif
+        return session.state
+    }
+
+    private func disconnectActive() {
+        if activeTerminal == .ssh {
+            session.disconnect()
+        } else {
+            #if os(macOS)
+            localSession.disconnect()
+            #endif
+        }
+    }
+
+    private func disconnectAll() {
+        session.disconnect()
+        #if os(macOS)
+        localSession.disconnect()
+        #endif
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 }
 
 // MARK: - Host editor
 
-/// Two-line editor: an `ssh` command line (parsed into host/port/user) and
-/// a password. Everything is padded — no edge-to-edge Form rows.
+/// Editor for a display name, an `ssh` command line, and a password.
 struct SSHHostEditorView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
@@ -174,7 +347,7 @@ struct SSHHostEditorView: View {
         hostID = host.id
         _name = State(initialValue: host.name)
         _command = State(initialValue: host.isConnectable
-                         ? "ssh \(host.username)@\(host.host) -p \(host.port)" : "ssh ")
+                         ? host.commandLine : "ssh ")
         _password = State(initialValue: savedPassword ?? "")
         self.onSave = onSave
     }
@@ -215,7 +388,7 @@ struct SSHHostEditorView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
-                    TextField("ssh user@host -p 22", text: $command)
+                    TextField("ssh user@host [-p port]", text: $command)
                         .textFieldStyle(.roundedBorder)
                         #if os(iOS)
                         .keyboardType(.URL)
@@ -234,7 +407,7 @@ struct SSHHostEditorView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 } else if let parsed {
-                    Text(verbatim: "\(parsed.username)@\(parsed.host):\(parsed.port)")
+                    Text(verbatim: parsed.connectionDescription)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -274,7 +447,7 @@ struct SSHHostEditorView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(parsed == nil)
+                .disabled(parsed == nil || password.isEmpty)
             }
         }
         .padding(20)

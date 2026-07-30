@@ -22,6 +22,29 @@ struct SSHHostConfig: Codable, Identifiable, Hashable {
         return username.isEmpty ? host : "\(username)@\(host)"
     }
 
+    /// The endpoint shown in the UI. Port 22 is SSH's implicit default and
+    /// should not be rewritten into a command that did not specify a port.
+    var connectionDescription: String {
+        let destination = username.isEmpty ? host : "\(username)@\(host)"
+        return port == 22 ? destination : "\(destination):\(port)"
+    }
+
+    var commandLine: String {
+        let destination = username.isEmpty ? host : "\(username)@\(host)"
+        return port == 22
+            ? "ssh \(destination)"
+            : "ssh \(destination) -p \(port)"
+    }
+
+    var isLocalhost: Bool {
+        let normalized = host.lowercased()
+        return normalized == "localhost" || normalized == "127.0.0.1" || normalized == "::1"
+    }
+
+    var locationDisplayName: String {
+        isLocalhost ? "\(L10n.resolveCurrent(.thisMac)) — \(displayName)" : displayName
+    }
+
     /// True when the entry has enough information to attempt a connection.
     var isConnectable: Bool { !host.isEmpty && !username.isEmpty }
 

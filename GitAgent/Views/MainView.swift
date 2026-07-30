@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SidebarItem: CaseIterable, Identifiable, Hashable {
-    case mine, starred, search, user, chat, terminal
+    case mine, starred, chat, terminal
 
     var id: Self { self }
 
@@ -14,8 +14,6 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         switch self {
         case .mine: return .myRepos
         case .starred: return .starred
-        case .search: return .searchRepos
-        case .user: return .viewUser
         case .chat: return .chat
         case .terminal: return .terminal
         }
@@ -25,8 +23,6 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         switch self {
         case .mine: return "books.vertical"
         case .starred: return "star"
-        case .search: return "magnifyingglass"
-        case .user: return "person"
         case .chat: return "bubble.left.and.bubble.right"
         case .terminal: return "terminal"
         }
@@ -36,17 +32,20 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
 struct MainView: View {
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(AppSettings.self) private var settings
+    @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
     @State private var selection: SidebarItem? = .mine
     @State private var navigationPath = NavigationPath()
+    @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showSettings = false
     @State private var showLogoutConfirmation = false
     @State private var showProfile = false
 
     var body: some View {
+        Group {
         #if os(iOS)
         // iPhone: a single NavigationStack — the menu is the root and pages
         // push on top, so the system edge swipe pops exactly one level. A
@@ -60,6 +59,11 @@ struct MainView: View {
         #else
         splitNavigation
         #endif
+        }
+        .onChange(of: terminalLauncher.request?.id, initial: true) { _, requestID in
+            guard requestID != nil else { return }
+            showTerminal()
+        }
     }
 
     // MARK: - iPhone (compact): single stack
@@ -111,7 +115,7 @@ struct MainView: View {
     // MARK: - iPad / macOS: split view
 
     private var splitNavigation: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $splitVisibility) {
             List(selection: $selection) {
                 profileSection
                 Section {
@@ -141,6 +145,8 @@ struct MainView: View {
             } message: {
                 Text(settings.tr(.logoutConfirmMessage))
             }
+            // The detail column owns the single, fixed sidebar toggle.
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             NavigationStack(path: $navigationPath) {
                 detailView(for: selection ?? .mine)
@@ -148,10 +154,36 @@ struct MainView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     #endif
                     .iOSHidesBackButton()
+                    .modifier(SidebarToggleButton(visibility: $splitVisibility))
                     .navigationDestination(for: Repo.self) { repo in
                         RepoDetailView(repo: repo)
+                            .modifier(SidebarToggleButton(visibility: $splitVisibility))
                     }
             }
+        }
+    }
+
+    /// The one fixed sidebar toggle. The system's variant changes icon and
+    /// placement with platform and split state, so it is removed everywhere
+    /// and replaced with this button. Applied as a modifier because toolbar
+    /// items do not propagate to pushed pages in the detail stack.
+    private struct SidebarToggleButton: ViewModifier {
+        @Binding var visibility: NavigationSplitViewVisibility
+
+        func body(content: Content) -> some View {
+            content
+                .toolbar(removing: .sidebarToggle)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            withAnimation {
+                                visibility = visibility == .detailOnly ? .automatic : .detailOnly
+                            }
+                        } label: {
+                            Image(systemName: "sidebar.left")
+                        }
+                    }
+                }
         }
     }
 
@@ -204,6 +236,19 @@ struct MainView: View {
 
     // MARK: - Detail
 
+    private func showTerminal() {
+        navigationPath = NavigationPath()
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            navigationPath.append(SidebarItem.terminal)
+        } else {
+            selection = .terminal
+        }
+        #else
+        selection = .terminal
+        #endif
+    }
+
     @ViewBuilder
     private func detailView(for item: SidebarItem) -> some View {
         switch item {
@@ -217,10 +262,6 @@ struct MainView: View {
                 try await client.starredRepos()
             }
             .navigationTitle(settings.tr(.starred))
-        case .search:
-            SearchReposView()
-        case .user:
-            UserReposView()
         case .chat:
             ChatView()
         case .terminal:
@@ -233,4 +274,5 @@ struct MainView: View {
     MainView()
         .environment(GitHubAuthManager())
         .environment(AppSettings())
+        .environment(TerminalLaunchCoordinator())
 }

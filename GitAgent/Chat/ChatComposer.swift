@@ -245,7 +245,7 @@ private struct RepoPickerView: View {
                     .onChange(of: query) { _, _ in highlight = 0 }
                     .padding()
 
-                if let repos {
+                if repos != nil {
                     List(Array(filtered.enumerated()), id: \.element.id) { index, repo in
                         Button { onSelect(repo) } label: {
                             HStack(spacing: 8) {

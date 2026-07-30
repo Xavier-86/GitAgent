@@ -65,18 +65,49 @@ struct RepoRow: View {
 
 /// Tappable list of repositories.
 struct RepoListView: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(RepositoryLocationStore.self) private var locations
     let repos: [Repo]
+
+    @State private var configuringRepo: Repo?
 
     var body: some View {
         List(repos) { repo in
-            NavigationLink(value: repo) {
-                RepoRow(repo: repo)
+            HStack(spacing: 10) {
+                NavigationLink(value: repo) {
+                    RepoRow(repo: repo)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                agentButton(for: repo)
             }
+        }
+        .sheet(item: $configuringRepo) { repo in
+            RepositoryLocationsView(repo: repo)
         }
         #if os(iOS)
         // Tighten the gap between the inline title and the first row.
         .contentMargins(.top, 8, for: .scrollContent)
         #endif
+    }
+
+    private func agentButton(for repo: Repo) -> some View {
+        let isConnected = locations.hasConnectedLocation(for: repo.id)
+        let color: Color = isConnected ? .green : .red
+        let label = settings.tr(isConnected ? .agentConfigured : .agentNotConfigured)
+
+        return Button {
+            configuringRepo = repo
+        } label: {
+            Image(systemName: "sparkles")
+                .font(.system(size: CGFloat(settings.uiFontSize), weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 32, height: 32)
+                .background(color.opacity(0.12), in: Circle())
+                .accessibilityLabel(label)
+        }
+        .buttonStyle(.borderless)
+        .help(label)
     }
 }
 
@@ -229,5 +260,10 @@ struct UserReposView: View {
 #Preview {
     NavigationStack {
         RepoListView(repos: [])
+            .environment(GitHubAuthManager())
+            .environment(AppSettings())
+            .environment(RepositoryLocationStore())
+            .environment(SSHHostStore())
+            .environment(TerminalLaunchCoordinator())
     }
 }

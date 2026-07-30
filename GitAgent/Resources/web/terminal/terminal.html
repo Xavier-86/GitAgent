@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <link rel="stylesheet" href="xterm.min.css">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #1e1e1e; overflow: hidden; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #000000; overflow: hidden; }
   #terminal { height: 100%; padding: 4px; box-sizing: border-box; }
 </style>
 </head>
@@ -18,8 +18,7 @@
     fontFamily: '"SF Mono", Menlo, monospace',
     fontSize: 13,
     cursorBlink: true,
-    scrollback: 5000,
-    theme: { background: '#1e1e1e' }
+    scrollback: 5000
   });
   const fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
@@ -43,12 +42,82 @@
   function refit() { try { fitAddon.fit(); } catch (e) {} }
   window.addEventListener('resize', refit);
 
+  // iOS touch scrolling: xterm.js has no built-in touch scroll, so translate
+  // single-finger drags (with momentum) into synthetic wheel events. They go
+  // through xterm's own wheel handling, so scrollback scrolls in normal mode
+  // and wheel escape sequences reach the running program (kimi code, vim, …)
+  // when mouse reporting is active.
+  (function enableTouchScroll() {
+    const container = document.getElementById('terminal');
+    let lastY = null, lastT = 0, velocity = 0, momentumFrame = null;
+
+    function dispatchWheel(deltaY) {
+      const target = term.element
+        ? (term.element.querySelector('.xterm-screen') || term.element)
+        : container;
+      target.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: deltaY, deltaMode: 0, bubbles: true, cancelable: true
+      }));
+    }
+    function stopMomentum() {
+      if (momentumFrame) { cancelAnimationFrame(momentumFrame); momentumFrame = null; }
+    }
+
+    container.addEventListener('touchstart', e => {
+      stopMomentum();
+      if (e.touches.length === 1) {
+        lastY = e.touches[0].clientY;
+        lastT = performance.now();
+        velocity = 0;
+      } else {
+        lastY = null;
+      }
+    }, { passive: true });
+
+    container.addEventListener('touchmove', e => {
+      if (lastY === null || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      const now = performance.now();
+      const dy = lastY - y;
+      const dt = now - lastT;
+      lastY = y;
+      lastT = now;
+      if (dt > 0) velocity = 0.8 * velocity + 0.2 * (dy / dt);
+      dispatchWheel(dy);
+      e.preventDefault();
+    }, { passive: false });
+
+    container.addEventListener('touchend', () => {
+      lastY = null;
+      if (Math.abs(velocity) < 0.05) return;
+      let v = velocity;
+      let prev = performance.now();
+      const step = now => {
+        const dt = Math.min(now - prev, 50);
+        prev = now;
+        dispatchWheel(v * dt);
+        v *= 0.95;
+        if (Math.abs(v) >= 0.02) {
+          momentumFrame = requestAnimationFrame(step);
+        } else {
+          momentumFrame = null;
+        }
+      };
+      momentumFrame = requestAnimationFrame(step);
+    });
+  })();
+
   // Native → terminal. `b64` is a base64-encoded byte string.
   function termWrite(b64) {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     term.write(bytes);
+  }
+
+  function resetTerminal() {
+    term.reset();
+    refit();
   }
 
   // Font size changes apply live (Settings → Terminal Font Size).

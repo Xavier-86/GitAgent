@@ -8,9 +8,10 @@
 import SwiftUI
 import WebKit
 
-/// Glue between the SSH session and the terminal web page. The owning view
+/// Glue between a terminal session and the terminal web page. The owning view
 /// wires `onInput`/`onResize` to the session and the session's output to
 /// `write(_:)`.
+@MainActor
 @Observable
 final class TerminalBridge {
     weak var webView: WKWebView?
@@ -23,8 +24,31 @@ final class TerminalBridge {
     /// Applied when the page reports ready, and on every change.
     var fontSize = 13
 
+    private var isReady = false
+    private var pendingOutput = Data()
+
     func write(_ data: Data) {
-        guard let webView else { return }
+        guard isReady, let webView else {
+            pendingOutput.append(data)
+            return
+        }
+        writeImmediately(data, to: webView)
+    }
+
+    /// Clears output from the previous shell without discarding bytes that
+    /// arrive while a newly-created web view is still loading.
+    func reset() {
+        pendingOutput.removeAll(keepingCapacity: true)
+        guard isReady else { return }
+        webView?.evaluateJavaScript("resetTerminal()", completionHandler: nil)
+    }
+
+    func attach(_ webView: WKWebView) {
+        self.webView = webView
+        isReady = false
+    }
+
+    private func writeImmediately(_ data: Data, to webView: WKWebView) {
         let encoded = Self.jsString(data.base64EncodedString())
         webView.evaluateJavaScript("termWrite(\(encoded))", completionHandler: nil)
     }
@@ -36,8 +60,13 @@ final class TerminalBridge {
 
     /// Called by the coordinator when the page signals `terminalReady`.
     func didBecomeReady() {
+        isReady = true
         setFontSize(fontSize)
         onReady?()
+        guard !pendingOutput.isEmpty, let webView else { return }
+        let output = pendingOutput
+        pendingOutput.removeAll(keepingCapacity: true)
+        writeImmediately(output, to: webView)
     }
 
     static func jsString(_ string: String) -> String {
@@ -53,7 +82,7 @@ struct TerminalView: View {
 
     var body: some View {
         TerminalRepresentable(bridge: bridge)
-            .background(Color(red: 0x1e / 255, green: 0x1e / 255, blue: 0x1e / 255))
+            .background(.black)
             .onAppear { bridge.fontSize = fontSize }
             .onChange(of: fontSize) { _, newSize in bridge.setFontSize(newSize) }
     }
@@ -95,7 +124,7 @@ private struct TerminalRepresentable {
         configuration.userContentController.add(context.coordinator, name: "terminalResize")
         configuration.userContentController.add(context.coordinator, name: "terminalReady")
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        bridge.webView = webView
+        bridge.attach(webView)
         #if canImport(UIKit)
         webView.isOpaque = true
         #endif
