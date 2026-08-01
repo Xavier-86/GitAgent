@@ -1,5 +1,7 @@
 # Digest — daily trending-repo briefing (planned, not implemented)
 
+> [中文版](Digest.zh.md)
+
 **Goal:** every day the user gets one technical briefing about hot/trending
 repositories, and can react to each item (interested / not interested / save).
 Feedback builds a preference profile that personalizes future briefings.

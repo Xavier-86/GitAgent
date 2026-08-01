@@ -79,6 +79,8 @@ What exists vs. what is planned:
 | In-app GitHub tool loop + write actions (Git Data API, with confirmation) | planned, light-task path |
 | On-device git engine (libgit2) | deferred — optional offline complement |
 
+Design documents: [Agent layer technical roadmap](GitAgent/Agent/Roadmap.md) (GitTaskBench-style task execution + in-repo benchmark harness) and [Daily digest technical roadmap](GitAgent/Digest/Digest.md) (trending-repo briefing with feedback-driven personalization).
+
 ## Roadmap
 
 In build order:
@@ -164,6 +166,10 @@ GitAgent/
 │   ├── RepositoryLocationVerifier.swift # Local/SSH Git and remote checks
 │   └── RepositoryLocationsView.swift # Add, verify, delete, and open locations
 ├── Agent/                    # (planned) Agent orchestration — remote CLI as the brain
+│   ├── Agent.md              # Pinned design decisions
+│   └── Roadmap.md            # Phased technical roadmap (GitTaskBench-style + Benchmark/)
+├── Digest/                   # (planned) Daily trending-repo briefing
+│   └── Digest.md             # Design + roadmap (feedback-driven personalization)
 ├── Views/
 │   ├── LoginView.swift       # Device-code login (in-app or system browser)
 │   ├── MainView.swift        # Single nav stack (iPhone) / split view (iPad, macOS)

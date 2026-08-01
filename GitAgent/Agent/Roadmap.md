@@ -1,5 +1,7 @@
 # Agent Layer — Technical Roadmap
 
+> [中文版](Roadmap.zh.md)
+
 Direction: bring **GitTaskBench-style capability** into GitAgent — the user
 describes a real-world task in natural language; a remote coding CLI
 understands the target repository, sets up the environment, executes, and

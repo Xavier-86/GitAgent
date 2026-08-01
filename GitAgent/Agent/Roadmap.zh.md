@@ -1,5 +1,7 @@
 # Agent 层 — 技术路线
 
+> [English version](Roadmap.md)
+
 方向：为 GitAgent 带来 **GitTaskBench 式的能力**——用户用自然语言描述一个真实任务；远程编码 CLI 理解目标仓库、搭建环境、执行，并交付一个可验证的结果。benchmark 评测工具本身也纳入本仓库（任务定义、runner、评分器），但**不编译进 app**——它是宿主机侧的评测工具。
 
 本文档是对 `Agent.md` 中已定决策的扩展（远程 CLI 是大脑、SSH 是唯一传输、exec 通道上跑 NDJSON 事件流），不重新讨论这些决策。

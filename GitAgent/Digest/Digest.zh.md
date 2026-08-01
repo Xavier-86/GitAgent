@@ -1,5 +1,7 @@
 # Digest — 每日热门仓库技术简报（规划中，未实现）
 
+> [English version](Digest.md)
+
 **目标：** 每天向用户推送一则关于热门/trending 仓库的技术简报；用户可以对每条内容做反馈（感兴趣 / 不感兴趣 / 收藏）。反馈积累成偏好画像，让后续简报越来越个性化。
 
 这是一个产品功能，与 `Agent/` 编排路线图相互独立：它**在端上运行，没有后端服务器**。复用现有管线——`API/GitHubClient` 取数据、`Chat/ChatClient` 做 LLM 撰写、Application Support JSON 做持久化、`L10n` 管字符串。
