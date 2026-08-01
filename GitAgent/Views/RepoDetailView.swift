@@ -139,6 +139,7 @@ struct RepoDetailView: View {
                 Text(settings.tr(.files)).tag(DetailTab.files)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .padding(.horizontal)
             .padding(.vertical, 8)
 

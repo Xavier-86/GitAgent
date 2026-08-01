@@ -100,7 +100,7 @@ struct ChatComposer: View {
                     }
                     .onSubmit { send() }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.secondary.opacity(0.08))
@@ -124,7 +124,9 @@ struct ChatComposer: View {
                     .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showRepoPicker) {

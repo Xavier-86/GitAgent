@@ -92,6 +92,7 @@ struct SSHView: View {
             }
             #endif
         }
+        .macTransparentScrollBackground()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

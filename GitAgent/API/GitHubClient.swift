@@ -301,6 +301,71 @@ final class GitHubClient {
         let variables: [String: String]
     }
 
+    // MARK: - GraphQL (per-path latest commit)
+
+    /// Latest commit (headline + date) for each given path, fetched in a
+    /// single GraphQL request with one aliased `history(first: 1)` query per
+    /// path — the same data github.com shows in its directory listing.
+    /// Decorative only: any failure yields an empty dictionary.
+    func latestCommits(owner: String, repo: String, ref: String, paths: [String]) async -> [String: FileCommit] {
+        let capped = Array(paths.prefix(100))
+        guard !capped.isEmpty else { return [:] }
+
+        let aliases = capped.enumerated().map { index, path in
+            "e\(index): history(first: 1, path: \"\(Self.graphQLStringLiteral(path))\") { nodes { messageHeadline committedDate } }"
+        }.joined(separator: "\n")
+        let query = """
+        query($owner:String!,$name:String!,$expr:String!){
+          repository(owner:$owner,name:$name){
+            object(expression:$expr){
+              ... on Commit {
+                \(aliases)
+              }
+            }
+          }
+        }
+        """
+
+        var request = URLRequest(url: GitHubConfig.apiBase.appending(path: "graphql"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        guard let body = try? JSONEncoder().encode(
+            GraphQLRequest(query: query, variables: ["owner": owner, "name": repo, "expr": ref]))
+        else { return [:] }
+        request.httpBody = body
+
+        // Alias keys are dynamic (e0…eN), so decode with JSONSerialization.
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (try? validate(response, data: data)) != nil,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataDict = root["data"] as? [String: Any],
+              let repository = dataDict["repository"] as? [String: Any],
+              let object = repository["object"] as? [String: Any]
+        else { return [:] }
+
+        let iso = ISO8601DateFormatter()
+        var result: [String: FileCommit] = [:]
+        for (index, path) in capped.enumerated() {
+            guard let history = object["e\(index)"] as? [String: Any],
+                  let nodes = history["nodes"] as? [[String: Any]],
+                  let node = nodes.first,
+                  let message = node["messageHeadline"] as? String,
+                  let dateString = node["committedDate"] as? String,
+                  let date = iso.date(from: dateString)
+            else { continue }
+            result[path] = FileCommit(messageHeadline: message, committedDate: date)
+        }
+        return result
+    }
+
+    /// Escapes a path for embedding in a GraphQL string literal.
+    private static func graphQLStringLiteral(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     private struct GraphQLCalendarResponse: Decodable {
         struct Data: Decodable {
             struct User: Decodable {

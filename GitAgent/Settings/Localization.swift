@@ -13,6 +13,7 @@ enum L10n {
         case uiFontSize, markdownFontSize, terminalFontSize
         // Profile
         case profile, repositories, followers, following, contributions, contributionsLastYear
+        case company, location, website, twitter, email, gists, joined
         // Kimi chat
         case kimiSection, kimiAPIKey, kimiBaseURL, kimiModel, provider, refreshModels, agentNeedKey
         case agentPlaceholder, agentError, chats, newChat, chatEmpty, chatGuideAt, chatGuideSlash, delete
@@ -66,6 +67,13 @@ enum L10n {
         .following: "Following",
         .contributions: "Contributions",
         .contributionsLastYear: "contributions in the last year",
+        .company: "Company",
+        .location: "Location",
+        .website: "Website",
+        .twitter: "Twitter",
+        .email: "Email",
+        .gists: "Gists",
+        .joined: "Joined",
         .kimiSection: "AI Chat",
         .kimiAPIKey: "API Key",
         .kimiBaseURL: "Base URL",

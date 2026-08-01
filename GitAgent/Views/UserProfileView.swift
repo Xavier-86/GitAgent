@@ -39,8 +39,34 @@ struct UserProfileView: View {
                     }
                 }
 
+                // Everything the API offers, shown when present.
+                Section {
+                    if let company = user.company, !company.isEmpty {
+                        LabeledContent(settings.tr(.company), value: company)
+                    }
+                    if let location = user.location, !location.isEmpty {
+                        LabeledContent(settings.tr(.location), value: location)
+                    }
+                    if let blog = user.blog, !blog.isEmpty {
+                        LabeledContent(settings.tr(.website), value: blog)
+                            .textSelection(.enabled)
+                    }
+                    if let twitter = user.twitterUsername, !twitter.isEmpty {
+                        LabeledContent(settings.tr(.twitter), value: "@\(twitter)")
+                    }
+                    if let email = user.email, !email.isEmpty {
+                        LabeledContent(settings.tr(.email), value: email)
+                            .textSelection(.enabled)
+                    }
+                    if let createdAt = user.createdAt {
+                        LabeledContent(settings.tr(.joined),
+                                       value: createdAt.formatted(date: .abbreviated, time: .omitted))
+                    }
+                }
+
                 Section {
                     LabeledContent(settings.tr(.repositories), value: "\(user.publicRepos)")
+                    LabeledContent(settings.tr(.gists), value: "\(user.publicGists)")
                     LabeledContent(settings.tr(.followers), value: "\(user.followers)")
                     LabeledContent(settings.tr(.following), value: "\(user.following)")
                 }

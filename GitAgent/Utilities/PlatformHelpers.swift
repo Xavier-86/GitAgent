@@ -101,3 +101,43 @@ extension UINavigationController {
     }
 }
 #endif
+
+#if canImport(AppKit)
+/// Sets the hosting window's background to a GitHub-style near-black
+/// (#0d1117) — softer than pure black against the system-gray chrome.
+private struct BlackWindowAccessor: NSViewRepresentable {
+    final class AccessorView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.backgroundColor = NSColor(red: 0x0d / 255, green: 0x11 / 255,
+                                              blue: 0x17 / 255, alpha: 1)
+        }
+    }
+
+    func makeNSView(context: Context) -> NSView { AccessorView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+#endif
+
+extension View {
+    /// Pure-black window background on macOS, matching the terminal; no-op elsewhere.
+    @ViewBuilder
+    func macBlackWindow() -> some View {
+        #if canImport(AppKit)
+        background(BlackWindowAccessor())
+        #else
+        self
+        #endif
+    }
+
+    /// Lists sit directly on the black window on macOS instead of the default
+    /// control background; no-op elsewhere.
+    @ViewBuilder
+    func macTransparentScrollBackground() -> some View {
+        #if canImport(AppKit)
+        scrollContentBackground(.hidden)
+        #else
+        self
+        #endif
+    }
+}

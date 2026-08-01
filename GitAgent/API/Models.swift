@@ -13,11 +13,25 @@ struct GitHubUser: Codable, Hashable {
     let publicRepos: Int
     let followers: Int
     let following: Int
+    // Everything else the API offers — shown when present. Defaults keep the
+    // memberwise initializer source-compatible for previews/tests.
+    var company: String? = nil
+    var location: String? = nil
+    var blog: String? = nil
+    var twitterUsername: String? = nil
+    var email: String? = nil
+    var hireable: Bool? = nil
+    var publicGists: Int = 0
+    var createdAt: Date? = nil
 
     enum CodingKeys: String, CodingKey {
         case login, name, bio, followers, following
         case avatarURL = "avatar_url"
         case publicRepos = "public_repos"
+        case company, location, blog, email, hireable
+        case twitterUsername = "twitter_username"
+        case publicGists = "public_gists"
+        case createdAt = "created_at"
     }
 }
 
@@ -53,6 +67,13 @@ struct RepoOwner: Codable, Hashable {
         case login
         case avatarURL = "avatar_url"
     }
+}
+
+/// Latest commit touching a path (headline + date) — shown per row in the
+/// file browser, like github.com's directory listing.
+struct FileCommit: Hashable {
+    let messageHeadline: String
+    let committedDate: Date
 }
 
 /// Entry returned by /repos/{owner}/{repo}/contents (a directory or a file).

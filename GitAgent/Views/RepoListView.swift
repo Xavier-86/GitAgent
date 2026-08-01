@@ -37,29 +37,13 @@ struct RepoRow: View {
                     .font(.system(size: uiSize - 4))
                     .foregroundStyle(.secondary)
                 if let updatedAt = repo.updatedAt {
-                    Text(Self.relativeShort(updatedAt))
+                    Text(RelativeTime.short(updatedAt))
                         .font(.system(size: uiSize - 4))
                         .foregroundStyle(.tertiary)
                 }
             }
         }
         .padding(.vertical, 2)
-    }
-
-    /// Single-unit relative time ("3m ago", "2d ago") — only the largest unit.
-    private static let relativeFormatter: DateComponentsFormatter = {
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.minute, .hour, .day, .weekOfMonth, .month, .year]
-        formatter.maximumUnitCount = 1
-        formatter.unitsStyle = .abbreviated
-        return formatter
-    }()
-
-    private static func relativeShort(_ date: Date) -> String {
-        let interval = max(0, -date.timeIntervalSinceNow)
-        guard interval >= 60 else { return "just now" }
-        let unit = Self.relativeFormatter.string(from: interval) ?? ""
-        return "\(unit) ago"
     }
 }
 
@@ -85,6 +69,7 @@ struct RepoListView: View {
         .sheet(item: $configuringRepo) { repo in
             RepositoryLocationsView(repo: repo)
         }
+        .macTransparentScrollBackground()
         #if os(iOS)
         // Tighten the gap between the inline title and the first row.
         .contentMargins(.top, 8, for: .scrollContent)

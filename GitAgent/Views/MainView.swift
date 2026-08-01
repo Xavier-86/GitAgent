@@ -127,6 +127,7 @@ struct MainView: View {
                 signOutSection
             }
             .navigationTitle("GitAgent")
+            .macTransparentScrollBackground()
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .contentMargins(.top, 8, for: .scrollContent)
@@ -216,6 +217,9 @@ struct MainView: View {
                         }
                     }
                 }
+                // Plain style: the default macOS button style draws a whitish
+                // capsule over the sidebar material.
+                .buttonStyle(.plain)
                 .foregroundStyle(.primary)
             }
             .sheet(isPresented: $showProfile) {

@@ -21,6 +21,7 @@ struct FileBrowserView: View {
     let onOpenTarget: (RepoLinkTarget) -> Void
 
     @State private var items: [RepoContent] = []
+    @State private var commits: [String: FileCommit] = [:]
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -45,7 +46,7 @@ struct FileBrowserView: View {
                         Button {
                             onOpenTarget(.directory(makeRef(for: item)))
                         } label: {
-                            Label(item.name, systemImage: "folder")
+                            rowLabel(item, icon: "folder")
                         }
                         // plain: iOS 26 would otherwise draw a tinted capsule
                         // background behind every list-row button.
@@ -55,7 +56,7 @@ struct FileBrowserView: View {
                         Button {
                             onOpenTarget(.file(makeRef(for: item)))
                         } label: {
-                            Label(item.name, systemImage: item.isMarkdown ? "doc.richtext" : "doc.text")
+                            rowLabel(item, icon: item.isMarkdown ? "doc.richtext" : "doc.text")
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.primary)
@@ -65,23 +66,53 @@ struct FileBrowserView: View {
                             Button {
                                 onOpenTarget(.repo(repoRef))
                             } label: {
-                                Label(item.name, systemImage: "shippingbox")
+                                rowLabel(item, icon: "shippingbox")
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.primary)
                         } else {
-                            Label(item.name, systemImage: "shippingbox")
+                            rowLabel(item, icon: "shippingbox")
                                 .foregroundStyle(.secondary)
                         }
                     default:
-                        Label(item.name, systemImage: "doc")
+                        rowLabel(item, icon: "doc")
                             .foregroundStyle(.secondary)
                     }
                 }
             }
         }
         .iOSHidesBackButton()
+        .macTransparentScrollBackground()
         .task(id: path) { await load() }
+    }
+
+    /// GitHub-web style columns: name in a fixed-width column on the left,
+    /// latest-commit headline left-aligned in the flexible middle (so all
+    /// headlines share one vertical edge), (static) time on the right.
+    private var nameColumnWidth: CGFloat {
+        #if os(macOS)
+        260
+        #else
+        140
+        #endif
+    }
+
+    private func rowLabel(_ item: RepoContent, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Label(item.name, systemImage: icon)
+                .lineLimit(1)
+                .frame(width: nameColumnWidth, alignment: .leading)
+            if let commit = commits[item.path] {
+                Text(commit.messageHeadline)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(RelativeTime.short(commit.committedDate))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+        }
     }
 
     private func makeRef(for item: RepoContent) -> RepoFileRef {
@@ -92,6 +123,7 @@ struct FileBrowserView: View {
         guard let client = auth.client else { return }
         isLoading = true
         errorMessage = nil
+        commits = [:]
         do {
             items = try await client.contents(owner: owner, repo: repo, path: path)
         } catch GitHubError.unauthorized {
@@ -101,6 +133,11 @@ struct FileBrowserView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+        // Commit info is decorative — it fills in after the listing appears
+        // and never blocks it.
+        guard !items.isEmpty else { return }
+        commits = await client.latestCommits(
+            owner: owner, repo: repo, ref: branch, paths: items.map(\.path))
     }
 }
 
