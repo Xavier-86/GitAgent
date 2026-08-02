@@ -4,6 +4,8 @@
 
 # GitAgent
 
+> [中文版](README.zh.md)
+
 **A Git-oriented agent that harnesses AI on your iPhone, iPad, or Mac to operate git repositories — local repos on devices across your LAN, or hosted repos online (GitHub).**
 
 Instead of tapping through git UIs or SSH-ing into machines, you tell GitAgent what you want in natural language. The agent plans and executes the git work for you: inspect history, review changes, commit, branch, push — on the machine in front of you, on another device in your local network, or against a remote hosting service.
@@ -79,7 +81,7 @@ What exists vs. what is planned:
 | In-app GitHub tool loop + write actions (Git Data API, with confirmation) | planned, light-task path |
 | On-device git engine (libgit2) | deferred — optional offline complement |
 
-Design documents: [Agent layer technical roadmap](GitAgent/Agent/Roadmap.md) (GitTaskBench-style task execution + in-repo benchmark harness) and [Daily digest technical roadmap](GitAgent/Digest/Digest.md) (trending-repo briefing with feedback-driven personalization).
+Design documents: [Agent layer technical roadmap](GitAgent/Docs/Roadmap.md) (GitTaskBench-style task execution + in-repo benchmark harness) and [Daily digest technical roadmap](GitAgent/Docs/Digest.md) (trending-repo briefing with feedback-driven personalization).
 
 ## Roadmap
 
@@ -165,11 +167,10 @@ GitAgent/
 │   ├── RepositoryLocation.swift # Persisted GitHub repo ↔ working-tree links
 │   ├── RepositoryLocationVerifier.swift # Local/SSH Git and remote checks
 │   └── RepositoryLocationsView.swift # Add, verify, delete, and open locations
-├── Agent/                    # (planned) Agent orchestration — remote CLI as the brain
-│   ├── Agent.md              # Pinned design decisions
-│   └── Roadmap.md            # Phased technical roadmap (GitTaskBench-style + Benchmark/)
-├── Digest/                   # (planned) Daily trending-repo briefing
-│   └── Digest.md             # Design + roadmap (feedback-driven personalization)
+├── Docs/                     # Design documents for planned features
+│   ├── Agent.md              # (planned Agent layer) Pinned design decisions
+│   ├── Roadmap.md            # (planned Agent layer) Phased technical roadmap (GitTaskBench-style + Benchmark/)
+│   └── Digest.md             # (planned daily digest) Design + roadmap (feedback-driven personalization)
 ├── Views/
 │   ├── LoginView.swift       # Device-code login (in-app or system browser)
 │   ├── MainView.swift        # Single nav stack (iPhone) / split view (iPad, macOS)
