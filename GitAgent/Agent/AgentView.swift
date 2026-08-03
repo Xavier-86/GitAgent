@@ -1,0 +1,43 @@
+//
+//  AgentView.swift
+//  GitAgent
+//
+//  Entry point for the app's repository agents.
+//
+
+import SwiftUI
+
+struct AgentView: View {
+  @Environment(AppSettings.self) private var settings
+  @Environment(RepoLaunchStore.self) private var deployments
+
+  var body: some View {
+    List {
+      Section(settings.tr(.availableAgents)) {
+        NavigationLink {
+          RepoLaunchView(startsWithDeploymentForm: deployments.records.isEmpty)
+        } label: {
+          HStack(spacing: 14) {
+            Image(systemName: "shippingbox.and.arrow.backward")
+              .font(.title2)
+              .foregroundStyle(.blue)
+              .frame(width: 36, height: 36)
+              .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(settings.tr(.repoLaunch))
+                .font(.headline)
+              Text(settings.tr(.repoLaunchDescription))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          .padding(.vertical, 5)
+        }
+      }
+    }
+    .macTransparentScrollBackground()
+    .navigationTitle(settings.tr(.agent))
+  }
+}

@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SidebarItem: CaseIterable, Identifiable, Hashable {
-    case mine, starred, chat, terminal
+    case mine, starred, chat, agent, terminal
 
     var id: Self { self }
 
@@ -15,6 +15,7 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         case .mine: return .myRepos
         case .starred: return .starred
         case .chat: return .chat
+        case .agent: return .agent
         case .terminal: return .terminal
         }
     }
@@ -24,6 +25,7 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         case .mine: return "books.vertical"
         case .starred: return "star"
         case .chat: return "bubble.left.and.bubble.right"
+        case .agent: return "brain.head.profile"
         case .terminal: return "terminal"
         }
     }
@@ -268,6 +270,8 @@ struct MainView: View {
             .navigationTitle(settings.tr(.starred))
         case .chat:
             ChatView()
+        case .agent:
+            AgentView()
         case .terminal:
             SSHView()
         }
@@ -279,4 +283,7 @@ struct MainView: View {
         .environment(GitHubAuthManager())
         .environment(AppSettings())
         .environment(TerminalLaunchCoordinator())
+        .environment(RepoLaunchStore())
+        .environment(RepositoryLocationStore())
+        .environment(SSHHostStore())
 }

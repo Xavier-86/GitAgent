@@ -42,7 +42,13 @@ struct SSHHostConfig: Codable, Identifiable, Hashable {
     }
 
     var locationDisplayName: String {
+        // "This Mac" only makes sense on macOS — iOS has no local shell, so a
+        // localhost SSH host there is just another (usually useless) host.
+        #if os(macOS)
         isLocalhost ? "\(L10n.resolveCurrent(.thisMac)) — \(displayName)" : displayName
+        #else
+        displayName
+        #endif
     }
 
     /// True when the entry has enough information to attempt a connection.

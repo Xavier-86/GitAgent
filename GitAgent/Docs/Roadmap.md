@@ -53,10 +53,11 @@ solved, so scope expectations accordingly.
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Repository anchor:** every agent task binds to a connected
-  `RepositoryLocation` (verified working tree, `hostID` selects the SSH host;
-  `hostID == nil` is a macOS local tree). No verified location, no task —
-  this reuses the existing verification pipeline instead of trusting paths.
+- **Repository anchor:** the first relay binds every agent task to a connected
+  SSH `RepositoryLocation` (`hostID` selects the saved host and `path` is the
+  verified working tree). Direct macOS locations remain supported by
+  RepoLaunch and the interactive local Terminal, but are not silently routed
+  through localhost SSH.
 - **Transport:** one SSH exec channel per task (per `Agent.md`). Long tasks
   outlive iOS socket suspension via the dispatch/poll model (`tmux`/`nohup`
   on the host, app re-attaches by session id) already noted in `SSH.md`.
@@ -70,13 +71,25 @@ solved, so scope expectations accordingly.
 
 ## 3. Phased plan
 
+### Deployment foundation — RepoLaunch (implemented)
+
+`Agent/RepoLaunch/` now supplies the environment-preparation entry point:
+clone or safely fast-forward an arbitrary online Git repository on macOS or an
+SSH host, optionally run explicit setup/build/test commands, verify the final
+Git identity and commit, persist logs, and register GitHub deployments as
+repository locations. A successful run hands the verified path directly to
+the matching local or SSH Terminal. It deliberately executes user-visible commands rather
+than embedding a second LLM loop; the planned remote coding CLI remains the
+brain that can propose those commands later.
+
 ### Phase 0 — Security gate (blocking)
 
-Agent execution multiplies the blast radius of the unsandboxed shell. Per
-`AGENTS.md`, do not build agent execution on `.acceptAnything()`.
+Agent execution multiplies the blast radius of the unsandboxed shell. Automatic
+TOFU pinning now rejects changed host keys, but the remaining safety work still
+blocks the coding-CLI relay.
 
-- [ ] `HostKeyStore.swift` — TOFU host-key verification with fingerprint
-      confirmation UI (already planned in `SSH.md`).
+- [x] `HostKeyStore.swift` — automatic exact-key TOFU pinning and changed-key
+      rejection. Fingerprint confirmation UI remains open.
 - [ ] `SSHKeyManager.swift` — public-key auth; agent tasks should not depend
       on password auth held in memory.
 - [ ] Host-side isolation policy documented and enforced in setup flow:
@@ -96,8 +109,8 @@ stream progress as chat cards, cancel cleanly.
 - [ ] `Agent/AgentSession.swift` — lifecycle: dispatch, stream, resume via
       CLI session id, cancel; dispatch/poll re-attach after iOS
       backgrounding.
-- [ ] `Agent/AgentHost.swift` — execution-target model resolving a
-      `RepositoryLocation` to (SSH host, working directory, environment
+- [ ] `Agent/AgentHost.swift` — execution-target model resolving an SSH
+      `RepositoryLocation` to (saved host, working directory, environment
       profile).
 - [ ] `Agent/AgentViewModel.swift` — event stream → four card kinds for
       `Chat/` UI.
@@ -192,7 +205,8 @@ published leaderboard format.
 | `Agent/EnvironmentProfile.swift` | Per-location env record + setup reuse | 2 | not started |
 | `Agent/ArtifactStore.swift` | SFTP pull + Application Support storage | 2 | not started |
 | `Agent/TaskCheck.swift` | Post-run machine check → pass/fail card | 2 | not started |
-| `SSH/HostKeyStore.swift` | TOFU host keys | 0 | not started |
+| `Agent/RepoLaunch/*` | Local/SSH repository deployment foundation | foundation | done (basic) |
+| `SSH/HostKeyStore.swift` | TOFU host keys | 0 | done (confirmation UI pending) |
 | `SSH/SSHKeyManager.swift` | Public-key auth | 0 | not started |
 | `SSH/` SFTP support | Remote file transfer for artifacts | 2 | not started |
 

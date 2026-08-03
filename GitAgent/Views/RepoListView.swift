@@ -84,7 +84,7 @@ struct RepoListView: View {
         return Button {
             configuringRepo = repo
         } label: {
-            Image(systemName: "sparkles")
+            Image(systemName: "terminal")
                 .font(.system(size: CGFloat(settings.uiFontSize), weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 32, height: 32)

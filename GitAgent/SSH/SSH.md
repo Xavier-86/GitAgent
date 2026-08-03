@@ -25,9 +25,10 @@ user-selected working trees; it does not use SSH or require Remote Login.
 - **Secrets in the Keychain.** Host passwords are stored via
   `Auth/KeychainHelper.swift`, keyed by the host's UUID; only host/port/user
   live in UserDefaults (`SSHHostStore`).
-- **Host key verification: TODO.** Connections currently use
-  `.acceptAnything()` — do not ship this silently; implement TOFU with a
-  fingerprint confirmation UI (`HostKeyStore`) before calling this secure.
+- **Host keys use automatic TOFU pinning.** `HostKeyStore` saves the exact
+  public key on first contact and rejects every later mismatch. A fingerprint
+  confirmation UI is still required before presenting this as strict host
+  identity verification.
 - **Sessions don't survive app backgrounding** (iOS suspends sockets) —
   leaving the terminal screen disconnects. Long remote tasks belong in
   `tmux`/`nohup` with a dispatch/poll model (future Agent layer concern).
@@ -42,8 +43,8 @@ user-selected working trees; it does not use SSH or require Remote Login.
 | `LocalTerminalSession.swift` | macOS login shell via `forkpty`, scoped-folder lifetime, resize | done |
 | `TerminalView.swift` | xterm.js terminal (WKWebView) + byte bridge | done |
 | `SSHView.swift` | Local/remote terminal picker, host editor, terminal screen | done |
-| `TerminalLaunchCoordinator.swift` | One-shot route from a repository location to Terminal | done |
-| `HostKeyStore.swift` | Known-hosts fingerprints + TOFU verification | not started |
+| `TerminalLaunchCoordinator.swift` | One-shot route from a repository location or deployment to Terminal | done |
+| `HostKeyStore.swift` | Exact-key TOFU pinning and changed-key rejection | done (fingerprint confirmation UI pending) |
 | `SSHKeyManager.swift` | Public-key auth (generate/import keys) | not started |
 | SFTP support | Remote file browsing/transfer (Citadel `openSFTP`) | not started |
 
@@ -70,7 +71,8 @@ remote working trees before they are marked connected:
 5. Separately make an uncached authenticated GitHub API request so stale URL
    metadata or a cached response cannot produce a green state.
 
-Selecting a connected location publishes a one-shot `TerminalLaunchRequest`.
+Selecting a connected location or completing a RepoLaunch deployment publishes
+a one-shot `TerminalLaunchRequest`.
 `MainView` switches to Terminal and `SSHView` chooses the requested transport.
 Remote locations connect through their configured SSH host, then
 `SSHTerminalSession` sends a shell-quoted `cd` after its PTY writer exists.

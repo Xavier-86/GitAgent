@@ -40,9 +40,7 @@ final class SSHTerminalSession {
                     authenticationMethod: {
                         .passwordBased(username: host.username, password: password)
                     },
-                    // TODO: TOFU host-key verification with a fingerprint
-                    // confirmation UI — never ship `.acceptAnything()` silently.
-                    hostKeyValidator: .acceptAnything()
+                    hostKeyValidator: HostKeyStore.validator(for: host.id)
                 )
                 let client = try await SSHClient.connect(to: settings)
                 guard let self, self.attemptID == attemptID else { return }

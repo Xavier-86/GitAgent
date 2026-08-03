@@ -9,7 +9,7 @@ import Foundation
 enum L10n {
     enum Key {
         // Sidebar
-        case myRepos, starred, searchRepos, viewUser, chat, logout, logoutConfirmMessage, settings
+        case myRepos, starred, searchRepos, viewUser, chat, agent, logout, logoutConfirmMessage
         case uiFontSize, markdownFontSize, terminalFontSize
         // Profile
         case profile, repositories, followers, following, contributions, contributionsLastYear
@@ -28,6 +28,7 @@ enum L10n {
         // SSH terminal
         case terminal, localShell, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
         case sshName, sshCommand, sshCommandInvalid, sshPassword, sshHostEditorTitle, save
+        case sshHostKeyChanged
         // Repository locations
         case repositoryLocations, noRepositoryLocations, repositoryLocationsHint
         case addRepositoryLocation, computer, selectComputer, repositoryPath, repositoryPathHint
@@ -37,6 +38,20 @@ enum L10n {
         case agentConfigured, agentNotConfigured, thisMac
         case addSSHHostFirst, chooseFolder, localRepositoryPathFooter
         case localRepositoryAccessDenied, folderSelectionFailed
+        // Remote path picker
+        case browse, selectThisFolder, directoryListingFailed
+        // RepoLaunch deployment
+        case repoLaunch, deployRepository
+        case availableAgents, repoLaunchDescription, advancedOptions, noFolderSelected
+        case repositoryURL, repositoryURLHint
+        case gitReference, gitReferenceHint, deploymentTarget, destinationFolder
+        case destinationPath, destinationName, chooseParentFolder, linkExistingRepository
+        case deploymentCommands, setupCommands, buildCommands, testCommands, commandsOptionalHint
+        case deploy, deploying, repoLaunchRunning, repoLaunchSucceeded, repoLaunchFailed
+        case repoLaunchCancelled, repoLaunchInterrupted, repoLaunchInvalidURL
+        case repoLaunchInvalidDestination, repoLaunchLocalUnavailable, repoLaunchInvalidResult
+        case repoLaunchCommit
+        case stagePreflight, stageCheckout, stageSetup, stageBuild, stageTest, stageVerify
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -61,6 +76,7 @@ enum L10n {
         .searchRepos: "Search Repositories",
         .viewUser: "View User",
         .chat: "Chat",
+        .agent: "Agent",
         .profile: "Profile",
         .repositories: "Repositories",
         .followers: "Followers",
@@ -91,7 +107,6 @@ enum L10n {
         .delete: "Delete",
         .logout: "Sign Out",
         .logoutConfirmMessage: "Are you sure you want to sign out?",
-        .settings: "Settings",
         .uiFontSize: "UI Font Size",
         .markdownFontSize: "Markdown Font Size",
         .terminalFontSize: "Terminal Font Size",
@@ -134,6 +149,7 @@ enum L10n {
         .sshPassword: "Password",
         .sshHostEditorTitle: "SSH Host",
         .save: "Save",
+        .sshHostKeyChanged: "The SSH host key changed. The connection was rejected to protect this computer.",
         .repositoryLocations: "Repository Locations",
         .noRepositoryLocations: "No Repository Locations",
         .repositoryLocationsHint: "Connect this GitHub repository to a working tree on this Mac or an SSH host.",
@@ -163,6 +179,48 @@ enum L10n {
         .chooseFolder: "Choose…",
         .localRepositoryAccessDenied: "GitAgent can no longer access this folder. Delete this location and choose the folder again.",
         .folderSelectionFailed: "Could not access the selected folder",
+        .browse: "Browse…",
+        .selectThisFolder: "Select This Folder",
+        .directoryListingFailed: "Could not list the folders on this computer.",
+        .repoLaunch: "RepoLaunch",
+        .availableAgents: "Available Agents",
+        .repoLaunchDescription: "Clone and prepare a repository on this Mac or an SSH computer.",
+        .advancedOptions: "Advanced Options",
+        .noFolderSelected: "Choose where to create the repository.",
+        .deployRepository: "Deploy Repository",
+        .repositoryURL: "Repository URL",
+        .repositoryURLHint: "https://github.com/owner/repository.git",
+        .gitReference: "Git Reference",
+        .gitReferenceHint: "Optional branch, tag, or commit. Leave empty for the default branch.",
+        .deploymentTarget: "Deployment Target",
+        .destinationFolder: "Destination Folder",
+        .destinationPath: "Destination Path",
+        .destinationName: "Folder Name",
+        .chooseParentFolder: "Choose Parent…",
+        .linkExistingRepository: "Link Existing Repository",
+        .deploymentCommands: "Environment & Verification",
+        .setupCommands: "Setup Commands",
+        .buildCommands: "Build Commands",
+        .testCommands: "Test Commands",
+        .commandsOptionalHint: "Optional shell commands run inside the deployed repository, in order. Their output and exit status are recorded.",
+        .deploy: "Deploy",
+        .deploying: "Deploying…",
+        .repoLaunchRunning: "Running",
+        .repoLaunchSucceeded: "Deployed",
+        .repoLaunchFailed: "Failed",
+        .repoLaunchCancelled: "Deployment cancelled.",
+        .repoLaunchInterrupted: "Deployment was interrupted before completion.",
+        .repoLaunchInvalidURL: "Enter a valid HTTPS, HTTP, SSH, or Git repository URL without embedded credentials.",
+        .repoLaunchInvalidDestination: "Enter a valid destination path.",
+        .repoLaunchLocalUnavailable: "Local deployment is only available on macOS.",
+        .repoLaunchInvalidResult: "Deployment finished without valid repository verification output.",
+        .repoLaunchCommit: "Commit",
+        .stagePreflight: "Preflight",
+        .stageCheckout: "Checkout",
+        .stageSetup: "Setup",
+        .stageBuild: "Build",
+        .stageTest: "Test",
+        .stageVerify: "Verify",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

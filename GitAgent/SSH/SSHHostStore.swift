@@ -27,6 +27,10 @@ final class SSHHostStore {
     /// Keychain; an empty/nil one leaves any existing password untouched.
     func save(_ host: SSHHostConfig, password: String?) {
         if let index = hosts.firstIndex(where: { $0.id == host.id }) {
+            let previous = hosts[index]
+            if previous.host != host.host || previous.port != host.port {
+                HostKeyStore.remove(hostID: host.id)
+            }
             hosts[index] = host
         } else {
             hosts.append(host)
@@ -41,6 +45,7 @@ final class SSHHostStore {
         hosts.removeAll { $0.id == host.id }
         persist()
         KeychainHelper.deleteSSHPassword(hostID: host.id.uuidString)
+        HostKeyStore.remove(hostID: host.id)
     }
 
     private func persist() {

@@ -58,9 +58,7 @@ enum RepositoryLocationVerifier {
             authenticationMethod: {
                 .passwordBased(username: host.username, password: password)
             },
-            // Repository verification uses the same transport policy as the
-            // terminal. Replace this with the planned shared TOFU validator.
-            hostKeyValidator: .acceptAnything()
+            hostKeyValidator: HostKeyStore.validator(for: host.id)
         )
         let client = try await SSHClient.connect(to: settings)
 

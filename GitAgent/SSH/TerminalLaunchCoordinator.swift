@@ -23,18 +23,28 @@ struct TerminalLaunchRequest: Identifiable, Equatable {
 final class TerminalLaunchCoordinator {
     private(set) var request: TerminalLaunchRequest?
 
-    func open(hostID: SSHHostConfig.ID, directory: String) {
+    func open(hostID: SSHHostConfig.ID?, directory: String, bookmarkData: Data? = nil) {
+        let target: TerminalLaunchTarget
+        if let hostID {
+            target = .ssh(hostID)
+        } else {
+            target = .local(bookmarkData: bookmarkData)
+        }
         request = TerminalLaunchRequest(
-            target: .ssh(hostID),
+            target: target,
             directory: directory
         )
     }
 
-    func openLocal(directory: String, bookmarkData: Data?) {
-        request = TerminalLaunchRequest(
-            target: .local(bookmarkData: bookmarkData),
-            directory: directory
+    @discardableResult
+    func open(_ location: RepositoryLocation) -> Bool {
+        guard location.isConnected else { return false }
+        open(
+            hostID: location.hostID,
+            directory: location.path,
+            bookmarkData: location.bookmarkData
         )
+        return true
     }
 
     func consume(_ id: TerminalLaunchRequest.ID) {

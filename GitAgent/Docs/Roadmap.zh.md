@@ -32,18 +32,25 @@
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **仓库锚点：** 每个 agent 任务绑定一个已连接的 `RepositoryLocation`（已验证的工作树，`hostID` 选定 SSH 主机；`hostID == nil` 表示 macOS 本地树）。没有验证过的 location 就不能跑任务——复用现有验证流水线，而不是信任路径字符串。
+- **仓库锚点：** 第一版 relay 的每个 agent 任务绑定一个已连接的 SSH `RepositoryLocation`（`hostID` 选定已保存主机，`path` 是已验证工作树）。macOS 直接位置仍供 RepoLaunch 和交互式本地 Terminal 使用，但不会暗中改走 localhost SSH。
 - **传输：** 每个任务一条 SSH exec 通道（按 `Agent.md`）。长任务通过派发/轮询模型撑过 iOS 的 socket 挂起（主机上 `tmux`/`nohup`，app 按 session id 重连），`SSH.md` 已有记录。
 - **行为驾驭：** 调用时的 system-prompt 标志（app 身份、仓库状态、环境画像）、目标仓库里的 `AGENTS.md`、工具白名单、max-turns 上限。hooks 实现写确认回路。
 - **交付：** 任务产物经 SFTP 拉回（Citadel `openSFTP`，在 `SSH.md` 中列为待办），以带机器可判定状态的结果卡片呈现——对齐 benchmark 的产物 + 评测装置模型。
 
 ## 3. 阶段计划
 
+### 部署基础 — RepoLaunch（已实现）
+
+`Agent/RepoLaunch/` 已提供环境准备入口：在 macOS 或 SSH 主机 clone
+或安全快进在线 Git 仓库，执行显式的可选 setup/build/test 命令，验证
+最终 Git 身份和 commit，持久化日志，并把 GitHub 部署登记为仓库位置。
+成功后会把验证路径直接交给对应的本地或 SSH Terminal。
+
 ### Phase 0 — 安全闸门（阻塞项）
 
-agent 执行会放大未沙箱 shell 的爆炸半径。按 `AGENTS.md`，不得在 `.acceptAnything()` 之上构建 agent 执行。
+agent 执行会放大未沙箱 shell 的爆炸半径。自动 TOFU 固定已经会拒绝变化的主机密钥，但编码 CLI relay 仍受其余安全项阻塞。
 
-- [ ] `HostKeyStore.swift` — TOFU 主机密钥验证 + 指纹确认 UI（`SSH.md` 已规划）。
+- [x] `HostKeyStore.swift` — 自动 TOFU 精确固定并拒绝密钥变化；指纹确认 UI 仍待实现。
 - [ ] `SSHKeyManager.swift` — 公钥认证；agent 任务不应依赖驻留内存的密码认证。
 - [ ] 宿主机隔离策略成文并在设置流程中强制执行：专用用户或容器（Docker/Lima），只挂载目标仓库（`Agent.md` 已定）。
 
@@ -110,13 +117,14 @@ Benchmark/
 | `Agent/AgentEvent.swift` | NDJSON 事件模型（text/tool/result/error/artifact） | 1 | 未开始 |
 | `Agent/AgentSession.swift` | 任务生命周期：派发、流式、恢复、取消 | 1 | 未开始 |
 | `Agent/CLIRelay.swift` | 无头 CLI 调用构建器 | 1 | 未开始 |
-| `Agent/AgentHost.swift` | 执行目标：location → 主机 + 环境画像 | 1 | 未开始 |
+| `Agent/AgentHost.swift` | 执行目标：SSH location → 已保存主机 + 环境画像 | 1 | 未开始 |
 | `Agent/AgentViewModel.swift` | 事件流 → 聊天卡片 | 1 | 未开始 |
 | `Agent/RepoBrief.swift` | 注入 prompt 的仓库简报 | 2 | 未开始 |
 | `Agent/EnvironmentProfile.swift` | 每 location 环境记录 + 安装复用 | 2 | 未开始 |
 | `Agent/ArtifactStore.swift` | SFTP 拉回 + Application Support 存储 | 2 | 未开始 |
 | `Agent/TaskCheck.swift` | 运行后机器检查 → pass/fail 卡片 | 2 | 未开始 |
-| `SSH/HostKeyStore.swift` | TOFU 主机密钥 | 0 | 未开始 |
+| `Agent/RepoLaunch/*` | 本地/SSH 仓库部署基础 | 基础 | 已完成（基础） |
+| `SSH/HostKeyStore.swift` | TOFU 主机密钥 | 0 | 已完成（指纹确认 UI 待实现） |
 | `SSH/SSHKeyManager.swift` | 公钥认证 | 0 | 未开始 |
 | `SSH/` SFTP 支持 | 产物远程文件传输 | 2 | 未开始 |
 

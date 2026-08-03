@@ -136,7 +136,8 @@ final class GitHubClient {
     /// Repositories starred by the signed-in user, most recently starred first.
     func starredRepos() async throws -> [Repo] {
         try await get([Repo].self, path: "/user/starred", query: [
-            URLQueryItem(name: "sort", value: "updated"),
+            URLQueryItem(name: "sort", value: "created"),
+            URLQueryItem(name: "direction", value: "desc"),
             URLQueryItem(name: "per_page", value: "100"),
         ])
     }
