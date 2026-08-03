@@ -45,8 +45,9 @@ struct SSHView: View {
         #endif
         .sheet(item: $editingHost) { host in
             SSHHostEditorView(host: host,
-                              savedPassword: store.password(for: host)) { updated, password in
-                store.save(updated, password: password)
+                              savedPassword: store.password(for: host),
+                              savedPrivateKey: store.privateKey(for: host)) { updated, password, privateKey in
+                store.save(updated, password: password, privateKey: privateKey)
             }
         }
         .task(id: terminalLauncher.request?.id) {
@@ -188,6 +189,12 @@ struct SSHView: View {
                 Text(verbatim: host.connectionDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let jumpHostID = host.jumpHostID,
+                   let jumpHost = store.hosts.first(where: { $0.id == jumpHostID }) {
+                    Text(L10n.sshVia(host: jumpHost.displayName))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             #if os(macOS)
@@ -255,11 +262,6 @@ struct SSHView: View {
     // MARK: - Connect
 
     private func connect(to host: SSHHostConfig, directory: String?) {
-        guard let password = store.password(for: host), !password.isEmpty else {
-            // No password saved yet — open the editor to collect it first.
-            editingHost = host
-            return
-        }
         #if os(macOS)
         localSession.disconnect()
         #endif
@@ -272,10 +274,20 @@ struct SSHView: View {
         session.onOutput = { [weak bridge] data in bridge?.write(data) }
         bridge.onInput = { [weak session] data in session?.send(data) }
         bridge.onResize = { [weak session] cols, rows in session?.resize(cols: cols, rows: rows) }
-        let initialInput = directory.map {
-            Data("cd \(shellQuote($0))\n".utf8)
+        var initialInput = Data()
+        if let directory {
+            initialInput.append(Data("cd \(shellQuote(directory))\n".utf8))
         }
-        session.connect(host: host, password: password, initialInput: initialInput)
+        // zsh displays its inverse-video PROMPT_EOL_MARK (`%`) when the SSH
+        // login banner lacks a trailing newline. Ctrl+L clears that transient
+        // banner without adding a `clear` command to shell history.
+        initialInput.append(0x0C)
+        do {
+            let route = try store.connectionRoute(for: host)
+            session.connect(route: route, initialInput: initialInput)
+        } catch {
+            session.fail(error.localizedDescription)
+        }
     }
 
     #if os(macOS)
@@ -332,24 +344,33 @@ struct SSHView: View {
 
 // MARK: - Host editor
 
-/// Editor for a display name, an `ssh` command line, and a password.
+/// Editor for a display name, an `ssh` command line, and credentials.
 struct SSHHostEditorView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(SSHHostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
     @State private var command: String
     @State private var password: String
+    @State private var authenticationKind: SSHAuthenticationKind
+    @State private var privateKey: String?
+    @State private var jumpHostID: SSHHostConfig.ID?
     private let hostID: UUID
-    let onSave: (SSHHostConfig, String?) -> Void
+    let onSave: (SSHHostConfig, String?, String?) -> Void
 
-    init(host: SSHHostConfig, savedPassword: String?,
-         onSave: @escaping (SSHHostConfig, String?) -> Void) {
+    init(host: SSHHostConfig, savedPassword: String?, savedPrivateKey: String?,
+         onSave: @escaping (SSHHostConfig, String?, String?) -> Void) {
         hostID = host.id
         _name = State(initialValue: host.name)
         _command = State(initialValue: host.isConnectable
                          ? host.commandLine : "ssh ")
         _password = State(initialValue: savedPassword ?? "")
+        _authenticationKind = State(initialValue: host.jumpHostID == nil
+                                    ? host.resolvedAuthenticationKind
+                                    : .ed25519Key)
+        _privateKey = State(initialValue: savedPrivateKey)
+        _jumpHostID = State(initialValue: host.jumpHostID)
         self.onSave = onSave
     }
 
@@ -357,7 +378,36 @@ struct SSHHostEditorView: View {
         var config = SSHHostConfig.parse(command: command)
         config?.id = hostID
         config?.name = name.trimmingCharacters(in: .whitespaces)
+        config?.authenticationKind = effectiveAuthenticationKind
+        config?.jumpHostID = jumpHostID
         return config
+    }
+
+    private var publicKey: String? {
+        guard let privateKey else { return nil }
+        return try? SSHEd25519Credential.publicKeyLine(from: privateKey)
+    }
+
+    private var effectiveAuthenticationKind: SSHAuthenticationKind {
+        jumpHostID == nil ? authenticationKind : .ed25519Key
+    }
+
+    private var publicKeySetupCommand: String? {
+        guard let publicKey else { return nil }
+        return """
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        grep -qxF '\(publicKey)' ~/.ssh/authorized_keys 2>/dev/null || printf '%s\\n' '\(publicKey)' >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        """
+    }
+
+    private var canSave: Bool {
+        guard parsed != nil else { return false }
+        switch effectiveAuthenticationKind {
+        case .password: return !password.isEmpty
+        case .ed25519Key: return publicKey != nil
+        }
     }
 
     /// Only complain about an unparseable command once the user typed one.
@@ -366,7 +416,8 @@ struct SSHHostEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 16) {
             Text(settings.tr(.sshHostEditorTitle))
                 .font(.headline)
 
@@ -415,25 +466,101 @@ struct SSHHostEditorView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(settings.tr(.sshPassword))
+                Text(settings.tr(.sshAuthentication))
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    // A plain field on purpose: pasteable, and it stops iOS
-                    // from treating this sheet as a Password AutoFill form.
-                    TextField(settings.tr(.sshPassword), text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        #if os(iOS)
-                        .textContentType(UITextContentType(rawValue: ""))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        #endif
-                    Button {
-                        if let text = pasteFromClipboard() { password = text }
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
+                if jumpHostID == nil {
+                    Picker(settings.tr(.sshAuthentication), selection: $authenticationKind) {
+                        Text(settings.tr(.sshPasswordAuthentication))
+                            .tag(SSHAuthenticationKind.password)
+                        Text(settings.tr(.sshKeyAuthentication))
+                            .tag(SSHAuthenticationKind.ed25519Key)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                } else {
+                    Text(settings.tr(.sshKeyAuthentication))
+                    Text(settings.tr(.sshJumpRequiresKey))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if effectiveAuthenticationKind == .password {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(settings.tr(.sshPassword))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        SecureField(settings.tr(.sshPassword), text: $password)
+                            .textFieldStyle(.roundedBorder)
+                            #if os(iOS)
+                            // Keep the value obscured while avoiding login-form
+                            // AutoFill heuristics for this host editor.
+                            .textContentType(UITextContentType(rawValue: ""))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            #endif
+                        Button {
+                            if let text = pasteFromClipboard() { password = text }
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                        }
                     }
                 }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(settings.tr(.sshPublicKey))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if let publicKey {
+                        Text(verbatim: publicKey)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(4)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Button(settings.tr(.copyPublicKey)) {
+                                    copyToClipboard(publicKey)
+                                }
+                                if let publicKeySetupCommand {
+                                    Button(settings.tr(.copySSHSetupCommand)) {
+                                        copyToClipboard(publicKeySetupCommand)
+                                    }
+                                }
+                            }
+                            Button(settings.tr(.generateNewKey), role: .destructive) {
+                                privateKey = SSHEd25519Credential.generatePrivateKey()
+                            }
+                        }
+                    } else {
+                        Button(settings.tr(.generateSSHKey)) {
+                            privateKey = SSHEd25519Credential.generatePrivateKey()
+                        }
+                    }
+                    Text(settings.tr(.sshPublicKeyHint))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(settings.tr(.sshJumpHost))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Picker(settings.tr(.sshJumpHost), selection: $jumpHostID) {
+                    Text(settings.tr(.sshDirectConnection))
+                        .tag(Optional<SSHHostConfig.ID>.none)
+                    ForEach(store.availableJumpHosts(for: hostID)) { jumpHost in
+                        Text(jumpHost.displayName)
+                            .tag(Optional(jumpHost.id))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                Text(settings.tr(.sshJumpHostHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             HStack {
@@ -442,19 +569,28 @@ struct SSHHostEditorView: View {
                     .keyboardShortcut(.cancelAction)
                 Button(settings.tr(.save)) {
                     if let parsed {
-                        onSave(parsed, password.isEmpty ? nil : password)
+                        onSave(
+                            parsed,
+                            password.isEmpty ? nil : password,
+                            privateKey
+                        )
                         dismiss()
                     }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(parsed == nil || password.isEmpty)
+                .disabled(!canSave)
+            }
+          }
+          .padding(20)
+        }
+        #if os(macOS)
+        .frame(minWidth: 400, minHeight: 560)
+        #endif
+        .onChange(of: jumpHostID) { _, newValue in
+            if newValue != nil {
+                authenticationKind = .ed25519Key
             }
         }
-        .padding(20)
-        .frame(minWidth: 400)
-        #if os(macOS)
-        .fixedSize()
-        #endif
     }
 }

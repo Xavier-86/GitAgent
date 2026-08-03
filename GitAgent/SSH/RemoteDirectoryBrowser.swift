@@ -18,31 +18,22 @@ enum RemoteDirectoryBrowser {
     /// Resolves `path` on the host (`~` is allowed) and lists its immediate
     /// subdirectories. Returns the canonical path and the folder names.
     static func listDirectories(
-        host: SSHHostConfig,
-        password: String,
+        route: SSHConnectionRoute,
         path: String
     ) async throws -> (path: String, directories: [String]) {
-        let settings = SSHClientSettings(
-            host: host.host,
-            port: host.port,
-            authenticationMethod: {
-                .passwordBased(username: host.username, password: password)
-            },
-            hostKeyValidator: HostKeyStore.validator(for: host.id)
-        )
-        let client = try await SSHClient.connect(to: settings)
+        let connection = try await SSHConnection.connect(route: route)
 
         do {
-            let output = try await client.executeCommand(
+            let output = try await connection.client.executeCommand(
                 listCommand(path: path),
                 maxResponseSize: 1_000_000,
                 mergeStreams: false,
                 inShell: false
             )
-            try? await client.close()
+            await connection.close()
             return try parse(String(decoding: output.readableBytesView, as: UTF8.self))
         } catch {
-            try? await client.close()
+            await connection.close()
             throw error
         }
     }

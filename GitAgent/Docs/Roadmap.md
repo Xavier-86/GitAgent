@@ -54,13 +54,17 @@ solved, so scope expectations accordingly.
 ```
 
 - **Repository anchor:** the first relay binds every agent task to a connected
-  SSH `RepositoryLocation` (`hostID` selects the saved host and `path` is the
-  verified working tree). Direct macOS locations remain supported by
+  SSH `RepositoryLocation` (`hostID` selects the saved target and its resolved
+  direct/jump route, while `path` is the verified working tree). The target
+  remains independently visible even when its transport traverses another
+  saved host. Direct macOS locations remain supported by
   RepoLaunch and the interactive local Terminal, but are not silently routed
   through localhost SSH.
-- **Transport:** one SSH exec channel per task (per `Agent.md`). Long tasks
-  outlive iOS socket suspension via the dispatch/poll model (`tmux`/`nohup`
-  on the host, app re-attaches by session id) already noted in `SSH.md`.
+- **Transport:** one SSH exec channel per task (per `Agent.md`), opened through
+  the same `SSHConnection` direct/jump chain used by Terminal, repository
+  verification/browsing, and RepoLaunch. Long tasks outlive iOS socket
+  suspension via the dispatch/poll model (`tmux`/`nohup` on the host, app
+  re-attaches by session id) already noted in `SSH.md`.
 - **Steering:** system-prompt flags at invocation (app identity, repo state,
   environment profile), `AGENTS.md` in the target repo, tool allow-lists,
   max-turns caps. Hooks implement the write-confirmation loop.
@@ -85,13 +89,19 @@ brain that can propose those commands later.
 ### Phase 0 — Security gate (blocking)
 
 Agent execution multiplies the blast radius of the unsandboxed shell. Automatic
-TOFU pinning now rejects changed host keys, but the remaining safety work still
-blocks the coding-CLI relay.
+TOFU pinning now rejects changed host keys, and app-generated Ed25519
+authentication is available for direct hosts and enforced for hosts reached
+through a jump route. The remaining setup-policy work still blocks the
+coding-CLI relay.
 
 - [x] `HostKeyStore.swift` — automatic exact-key TOFU pinning and changed-key
       rejection. Fingerprint confirmation UI remains open.
-- [ ] `SSHKeyManager.swift` — public-key auth; agent tasks should not depend
-      on password auth held in memory.
+- [x] `SSHEd25519Credential.swift` — app-generated Ed25519 authentication,
+      private-key storage in Keychain, and OpenSSH public-key/setup-command
+      export. Imported and encrypted private-key formats remain optional work.
+- [ ] Agent relay setup policy requires key authentication for its execution
+      target even when that target is reached directly; jump targets already
+      enforce this at the SSH route layer.
 - [ ] Host-side isolation policy documented and enforced in setup flow:
       dedicated user or container (Docker/Lima) with only intended repos
       mounted (pinned in `Agent.md`).
@@ -199,7 +209,7 @@ published leaderboard format.
 | `Agent/AgentEvent.swift` | NDJSON event model (text/tool/result/error/artifact) | 1 | not started |
 | `Agent/AgentSession.swift` | Task lifecycle: dispatch, stream, resume, cancel | 1 | not started |
 | `Agent/CLIRelay.swift` | Headless CLI invocation builder | 1 | not started |
-| `Agent/AgentHost.swift` | Execution target: location → host + env profile | 1 | not started |
+| `Agent/AgentHost.swift` | Execution target: location → resolved SSH route + env profile | 1 | not started |
 | `Agent/AgentViewModel.swift` | Event stream → chat cards | 1 | not started |
 | `Agent/RepoBrief.swift` | Repository briefing injected into prompts | 2 | not started |
 | `Agent/EnvironmentProfile.swift` | Per-location env record + setup reuse | 2 | not started |
@@ -207,7 +217,7 @@ published leaderboard format.
 | `Agent/TaskCheck.swift` | Post-run machine check → pass/fail card | 2 | not started |
 | `Agent/RepoLaunch/*` | Local/SSH repository deployment foundation | foundation | done (basic) |
 | `SSH/HostKeyStore.swift` | TOFU host keys | 0 | done (confirmation UI pending) |
-| `SSH/SSHKeyManager.swift` | Public-key auth | 0 | not started |
+| `SSH/SSHEd25519Credential.swift` | App-generated Ed25519 authentication | 0 | done (basic) |
 | `SSH/` SFTP support | Remote file transfer for artifacts | 2 | not started |
 
 Non-app: `Benchmark/` (tasks, runner, grader) — Phase 3, never added to the

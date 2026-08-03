@@ -7,21 +7,19 @@
 
 import SwiftUI
 
-/// Identifiable host + password pair for presenting `RemotePathPickerView`
-/// as a sheet from a path-entry form.
+/// Identifiable SSH route for presenting `RemotePathPickerView` as a sheet
+/// from a path-entry form.
 struct RemoteBrowseContext: Identifiable {
-    let host: SSHHostConfig
-    let password: String
+    let route: SSHConnectionRoute
 
-    var id: SSHHostConfig.ID { host.id }
+    var id: SSHHostConfig.ID { route.target.id }
 }
 
 struct RemotePathPickerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
 
-    let host: SSHHostConfig
-    let password: String
+    let route: SSHConnectionRoute
     /// Where browsing starts; an empty value starts at the home directory.
     let initialPath: String
     let onSelect: (String) -> Void
@@ -114,8 +112,7 @@ struct RemotePathPickerView: View {
         defer { isLoading = false }
         do {
             let result = try await RemoteDirectoryBrowser.listDirectories(
-                host: host,
-                password: password,
+                route: route,
                 path: path
             )
             resolvedPath = result.path

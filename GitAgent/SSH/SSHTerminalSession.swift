@@ -10,9 +10,8 @@ import Citadel
 import NIO
 import NIOSSH
 
-/// Opens an SSH connection (password auth) and runs an interactive shell
-/// behind a PTY. Output bytes are forwarded via `onOutput`; keystrokes go
-/// back through `send(_:)`.
+/// Opens an SSH connection and runs an interactive shell behind a PTY. Output
+/// bytes are forwarded via `onOutput`; keystrokes go back through `send(_:)`.
 @MainActor
 @Observable
 final class SSHTerminalSession {
@@ -20,32 +19,31 @@ final class SSHTerminalSession {
     /// Remote output — wired to the terminal view by the owning screen.
     var onOutput: ((Data) -> Void)?
 
-    private var client: SSHClient?
+    private var connection: SSHConnection?
     private var writer: TTYStdinWriter?
     private var sessionTask: Task<Void, Never>?
     private var attemptID: UUID?
 
     var isConnected: Bool { state == .connected }
 
-    func connect(host: SSHHostConfig, password: String, initialInput: Data? = nil) {
+    func connect(route: SSHConnectionRoute, initialInput: Data? = nil) {
         guard state == .disconnected || isFailed else { return }
         let attemptID = UUID()
         self.attemptID = attemptID
         state = .connecting
         sessionTask = Task { [weak self] in
+            var pendingConnection: SSHConnection?
             do {
-                let settings = SSHClientSettings(
-                    host: host.host,
-                    port: host.port,
-                    authenticationMethod: {
-                        .passwordBased(username: host.username, password: password)
-                    },
-                    hostKeyValidator: HostKeyStore.validator(for: host.id)
-                )
-                let client = try await SSHClient.connect(to: settings)
-                guard let self, self.attemptID == attemptID else { return }
+                let connection = try await SSHConnection.connect(route: route)
+                pendingConnection = connection
+                guard let self, self.attemptID == attemptID else {
+                    pendingConnection = nil
+                    await connection.close()
+                    return
+                }
                 try Task.checkCancellation()
-                self.client = client
+                self.connection = connection
+                pendingConnection = nil
 
                 let pty = SSHChannelRequestEvent.PseudoTerminalRequest(
                     wantReply: true,
@@ -56,9 +54,27 @@ final class SSHTerminalSession {
                     terminalPixelHeight: 0,
                     terminalModes: .init([.ECHO: 1])
                 )
+                // OpenSSH servers commonly accept LANG/LC_* environment
+                // requests. A UTF-8 locale stops tools such as macOS `ls`
+                // from replacing non-ASCII filename characters with `?`.
+                let environment = [
+                    SSHChannelRequestEvent.EnvironmentRequest(
+                        wantReply: false,
+                        name: "LANG",
+                        value: "C.UTF-8"
+                    ),
+                    SSHChannelRequestEvent.EnvironmentRequest(
+                        wantReply: false,
+                        name: "LC_CTYPE",
+                        value: "C.UTF-8"
+                    ),
+                ]
                 // withPTY runs until the shell exits or the channel dies —
                 // this await lasts for the whole session.
-                try await client.withPTY(pty) { inbound, outbound in
+                try await connection.client.withPTY(
+                    pty,
+                    environment: environment
+                ) { inbound, outbound in
                     self.writer = outbound
                     self.state = .connected
                     if let initialInput {
@@ -77,11 +93,25 @@ final class SSHTerminalSession {
                         self.state = .disconnected
                     }
                 }
+                await connection.close()
+                if self.connection === connection {
+                    self.connection = nil
+                }
             } catch is CancellationError {
                 guard self?.attemptID == attemptID else { return }
+                if let connection = self?.connection ?? pendingConnection {
+                    self?.connection = nil
+                    pendingConnection = nil
+                    await connection.close()
+                }
                 self?.state = .disconnected
             } catch {
                 guard self?.attemptID == attemptID else { return }
+                if let connection = self?.connection ?? pendingConnection {
+                    self?.connection = nil
+                    pendingConnection = nil
+                    await connection.close()
+                }
                 self?.state = .failed(error.localizedDescription)
             }
         }
@@ -100,12 +130,21 @@ final class SSHTerminalSession {
     }
 
     func disconnect() {
+        let connection = connection
         attemptID = nil
         sessionTask?.cancel()
         sessionTask = nil
         writer = nil
-        client = nil
+        self.connection = nil
         state = .disconnected
+        if let connection {
+            Task { await connection.close() }
+        }
+    }
+
+    func fail(_ message: String) {
+        disconnect()
+        state = .failed(message)
     }
 
     private var isFailed: Bool {

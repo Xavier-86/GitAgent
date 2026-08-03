@@ -43,7 +43,40 @@ The current codebase is the foundation the agent is built on — a native GitHub
 - Non-default SSH ports must be supplied explicitly with `-p <port>` and are then preserved and displayed
 - Passwords go to the system Keychain, one tap on a host row connects
 - Local and remote shells share the same in-app xterm.js renderer (vendored, works offline), with terminal resize propagated to the active PTY and momentum touch scrolling on iOS
-- iOS/macOS can connect to Mac/Linux SSH hosts across the LAN; the first presented host key is pinned with TOFU and every later key change is rejected
+- iOS/macOS can connect to Mac/Linux SSH hosts across the LAN using a password or an app-generated Ed25519 key; private keys remain in the Keychain, the first presented host key is pinned with TOFU, and every later key change is rejected
+- A saved target remains an independent device in the UI while optionally connecting through another saved SSH host (for example iPhone → Linux jump host → Mac); the directly reached jump host may use a password, while the target uses an Ed25519 key
+
+### iPhone → Linux jump host → Mac setup
+
+Use this route when campus or guest Wi-Fi allows both devices to reach a Linux
+host but isolates the iPhone from the Mac directly:
+
+1. Save the Linux host in GitAgent and verify that it connects. The first hop
+   may use either a password or an SSH key.
+2. Save the Mac as a separate host using the Mac's normal LAN address and
+   username, then select the saved Linux host under **Jump Host**.
+3. The Mac target must use **SSH Key** authentication. Generate its Ed25519 key
+   in the host editor and use **Copy Setup Command**, then paste and run that
+   command in Terminal on the Mac.
+4. Save the Mac host and connect to it normally. GitAgent keeps showing the Mac
+   as an independent device while opening the route in the background as
+   iPhone → Linux → Mac.
+
+If **Copy Public Key** was used instead, run this manual equivalent on the Mac
+after the public key reaches its clipboard (for example through Universal
+Clipboard):
+
+```sh
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+pbpaste | grep '^ssh-ed25519 ' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+The generated private key never leaves the iOS Keychain. The copied public key
+is safe to install on the Mac. Do not copy a login password or private key into
+documentation, source control, or messages. More detail is in
+[`GitAgent/SSH/SSH.md`](GitAgent/SSH/SSH.md).
 
 **Repository locations are in:**
 
@@ -84,7 +117,7 @@ What exists vs. what is planned:
 |---|---|
 | GitHub client foundation (OAuth, repo/file browsing, Markdown) | done |
 | Multi-provider streaming chat UI, Keychain credential storage | done |
-| `SSH/` — SSH transport (connect, PTY shell, xterm.js terminal, TOFU host-key pinning, hosts in UserDefaults, passwords in Keychain) | done (basic); fingerprint confirmation UI, public-key auth, SFTP pending |
+| `SSH/` — SSH transport (direct/jump connect, password/Ed25519 auth, PTY shell, xterm.js terminal, TOFU host-key pinning, credentials in Keychain) | done (basic); fingerprint confirmation UI and SFTP pending |
 | Repository locations — GitHub repo ↔ local/SSH working trees, verification, native local/SSH Terminal deep link | done (basic) |
 | `Agent/RepoLaunch/` — local/SSH repository deployment, staged commands, verification, persistent logs | done (basic) |
 | `Agent/` — orchestration (NDJSON event model, session/resume, CLI relay) | planned |
@@ -99,7 +132,7 @@ Design documents: [Agent layer technical roadmap](GitAgent/Docs/Roadmap.md) (Git
 
 In build order:
 
-1. ~~**SSH transport layer** (`SSH/`)~~ — done: connect, interactive PTY terminal, key-in-Keychain host storage, automatic TOFU host-key pinning; fingerprint confirmation UI and public-key auth still open
+1. ~~**SSH transport layer** (`SSH/`)~~ — done: direct/jump connect, password and app-generated Ed25519 authentication, interactive PTY terminal, credentials in Keychain, and automatic TOFU host-key pinning; fingerprint confirmation UI remains open
 2. ~~**Repository location layer** (`Locations/`)~~ — done: associate one or more local/SSH working trees, verify GitHub remotes, and open connected paths in the matching local or SSH Terminal
 3. ~~**RepoLaunch deployment foundation** (`Agent/RepoLaunch/`)~~ — done: deploy arbitrary online Git repos locally or over SSH, run explicit staged setup/build/test commands, verify and register the result
 4. **Agent orchestration layer** (`Agent/`) — NDJSON event parsing, task sessions, headless CLI invocation with steering flags
@@ -170,8 +203,10 @@ GitAgent/
 ├── SSH/
 │   ├── SSHTerminalSession.swift # SSH connect (Citadel) + PTY shell session
 │   ├── LocalTerminalSession.swift # macOS login shell in a native local PTY
-│   ├── SSHHostConfig.swift   # Saved host model (passwords stay in Keychain)
-│   ├── SSHHostStore.swift    # Host list persistence (UserDefaults)
+│   ├── SSHHostConfig.swift   # Saved host model (credentials stay in Keychain)
+│   ├── SSHHostStore.swift    # Host list, jump routes, credential resolution
+│   ├── SSHConnection.swift   # Direct/jump connection chain
+│   ├── SSHEd25519Credential.swift # App-owned SSH key generation/export
 │   ├── HostKeyStore.swift    # Automatic TOFU exact-key pinning
 │   ├── TerminalView.swift    # xterm.js terminal (WKWebView bridge)
 │   ├── TerminalLaunchCoordinator.swift # Location/deployment → Terminal routing

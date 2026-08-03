@@ -33,6 +33,12 @@ enum KeychainHelper {
     static func readSSHPassword(hostID: String) -> String? { read(account: "ssh-password-\(hostID)") }
     static func deleteSSHPassword(hostID: String) { delete(account: "ssh-password-\(hostID)") }
 
+    // MARK: - SSH Ed25519 private keys (base64 raw representation)
+
+    static func save(sshPrivateKey: String, hostID: String) { save(sshPrivateKey, account: "ssh-private-key-\(hostID)") }
+    static func readSSHPrivateKey(hostID: String) -> String? { read(account: "ssh-private-key-\(hostID)") }
+    static func deleteSSHPrivateKey(hostID: String) { delete(account: "ssh-private-key-\(hostID)") }
+
     // MARK: - Generic plumbing
 
     private static func save(_ value: String, account: String) {

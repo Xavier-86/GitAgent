@@ -7,6 +7,9 @@ commit, persists the run log, and turns GitHub-backed deployments into verified
 repository locations. Successful runs immediately open the matching local or
 SSH Terminal at the verified repository root. This provides the
 environment-preparation boundary that the later coding-CLI relay will consume.
+The shared SSH foundation already resolves direct and jump-host routes, keeps
+each target independently addressable, and supports password or app-generated
+Ed25519 authentication. Hosts reached through a jump route use Ed25519 keys.
 
 **Chosen route: the remote coding CLI is the brain; the app is the face and
 the hands.** The app does not re-implement an agent loop for heavy tasks.
@@ -22,6 +25,10 @@ it as chat. Light GitHub-only tasks keep using the in-app tool loop
   task; events map to four card kinds: text, tool call, tool result, error.
   The CLI's session id is kept so conversations can be resumed
   (`claude --resume <id>`).
+- **One shared SSH route.** The relay must use `SSHHostStore.connectionRoute`
+  and `SSHConnection`, just like Terminal, repository verification/browsing,
+  and RepoLaunch. It must not create a second direct-only connection path or
+  flatten a jump target into its first hop.
 - **Steering, not forking.** Behavior is shaped from outside the CLI:
   - system-prompt flags at invocation (app identity, user prefs, repo state)
   - `AGENTS.md` / `CLAUDE.md` maintained in the target repo
@@ -43,7 +50,7 @@ it as chat. Light GitHub-only tasks keep using the in-app tool loop
 | `AgentEvent.swift` | NDJSON event model (text/tool/result/error) | not started |
 | `AgentSession.swift` | Task lifecycle: dispatch, stream, resume, cancel | not started |
 | `CLIRelay.swift` | Builds headless CLI invocations (flags, prompt, allow-lists) | not started |
-| `AgentHost.swift` | Execution target model: saved SSH host + verified working tree | not started |
+| `AgentHost.swift` | Execution target model: resolved SSH route + verified working tree | not started |
 | `AgentViewModel.swift` | Event stream → chat cards for `Chat/` UI | not started |
 
 ## Implemented RepoLaunch contents
@@ -55,3 +62,12 @@ it as chat. Light GitHub-only tasks keep using the in-app tool loop
 | `RepoLaunchStore.swift` | Application Support history, active lifecycle, bounded logs |
 | `RepoLaunchView.swift` | Deployment entry routing, compact local/SSH form, progress, location registration, Terminal handoff |
 | `RepoLaunchHistoryView.swift` | Deployment history navigation, rows, deletion, and persisted log presentation |
+
+## Implemented SSH prerequisites
+
+| File | Role | Status |
+|---|---|---|
+| `SSH/SSHConnection.swift` | Owns direct/jump client chains used by every remote workflow | done (basic) |
+| `SSH/SSHEd25519Credential.swift` | Generates OpenSSH-compatible Ed25519 credentials | done (basic) |
+| `SSH/SSHHostStore.swift` | Resolves routes and Keychain-backed per-hop credentials | done (basic) |
+| `SSH/HostKeyStore.swift` | Exact-key TOFU pinning and changed-key rejection | done; fingerprint confirmation UI pending |

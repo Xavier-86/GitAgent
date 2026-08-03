@@ -48,22 +48,13 @@ enum RepositoryLocationVerifier {
         }
     }
 
-    static func verify(host: SSHHostConfig,
-                       password: String,
+    static func verify(route: SSHConnectionRoute,
                        path: String,
                        expectedRepository: String) async throws -> RepositoryLocationProbe {
-        let settings = SSHClientSettings(
-            host: host.host,
-            port: host.port,
-            authenticationMethod: {
-                .passwordBased(username: host.username, password: password)
-            },
-            hostKeyValidator: HostKeyStore.validator(for: host.id)
-        )
-        let client = try await SSHClient.connect(to: settings)
+        let connection = try await SSHConnection.connect(route: route)
 
         do {
-            let output = try await client.executeCommand(
+            let output = try await connection.client.executeCommand(
                 probeCommand(path: path),
                 maxResponseSize: 1_000_000,
                 mergeStreams: false,
@@ -73,7 +64,7 @@ enum RepositoryLocationVerifier {
                 String(decoding: output.readableBytesView, as: UTF8.self),
                 expectedRepository: expectedRepository
             )
-            let remoteOutput = try await client.executeCommand(
+            let remoteOutput = try await connection.client.executeCommand(
                 remoteProbeCommand(
                     path: probe.canonicalPath,
                     remoteName: probe.remoteName
@@ -82,7 +73,7 @@ enum RepositoryLocationVerifier {
                 mergeStreams: false,
                 inShell: false
             )
-            try? await client.close()
+            await connection.close()
             guard String(decoding: remoteOutput.readableBytesView, as: UTF8.self)
                 .split(whereSeparator: \.isWhitespace)
                 .contains("remote_ok")
@@ -91,7 +82,7 @@ enum RepositoryLocationVerifier {
             }
             return probe
         } catch {
-            try? await client.close()
+            await connection.close()
             throw error
         }
     }

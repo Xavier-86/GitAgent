@@ -45,8 +45,7 @@ enum RepoLaunchExecutor {
 
   static func deploy(
     _ request: RepoLaunchRequest,
-    host: SSHHostConfig?,
-    password: String?,
+    route: SSHConnectionRoute?,
     onStage: @escaping StageHandler,
     onOutput: @escaping OutputHandler
   ) async throws -> RepoLaunchResult {
@@ -59,16 +58,12 @@ enum RepoLaunchExecutor {
       #endif
     }
 
-    guard let host, host.id == request.hostID else {
+    guard let route, route.target.id == request.hostID else {
       throw RepoLaunchError.sshHostUnavailable
-    }
-    guard let password, !password.isEmpty else {
-      throw RepoLaunchError.sshPasswordMissing
     }
     return try await deployRemote(
       request,
-      host: host,
-      password: password,
+      route: route,
       onStage: onStage,
       onOutput: onOutput
     )
@@ -280,26 +275,17 @@ enum RepoLaunchExecutor {
 
   private static func deployRemote(
     _ request: RepoLaunchRequest,
-    host: SSHHostConfig,
-    password: String,
+    route: SSHConnectionRoute,
     onStage: @escaping StageHandler,
     onOutput: @escaping OutputHandler
   ) async throws -> RepoLaunchResult {
-    let settings = SSHClientSettings(
-      host: host.host,
-      port: host.port,
-      authenticationMethod: {
-        .passwordBased(username: host.username, password: password)
-      },
-      hostKeyValidator: HostKeyStore.validator(for: host.id)
-    )
-    let client = try await SSHClient.connect(to: settings)
+    let connection = try await SSHConnection.connect(route: route)
     do {
       var verificationOutput = ""
       for (stage, script) in stageScripts(for: request) {
         try Task.checkCancellation()
         onStage(stage)
-        let stream = try await client.executeCommandStream(script, inShell: false)
+        let stream = try await connection.client.executeCommandStream(script, inShell: false)
         for try await chunk in stream {
           try Task.checkCancellation()
           let text: String
@@ -311,10 +297,10 @@ enum RepoLaunchExecutor {
           if stage == .verify { verificationOutput.append(text) }
         }
       }
-      try? await client.close()
+      await connection.close()
       return try parseResult(verificationOutput, localBookmarkData: nil)
     } catch {
-      try? await client.close()
+      await connection.close()
       throw error
     }
   }

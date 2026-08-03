@@ -28,7 +28,10 @@ enum L10n {
         // SSH terminal
         case terminal, localShell, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
         case sshName, sshCommand, sshCommandInvalid, sshPassword, sshHostEditorTitle, save
-        case sshHostKeyChanged
+        case sshAuthentication, sshPasswordAuthentication, sshKeyAuthentication, sshPublicKey
+        case copyPublicKey, copySSHSetupCommand, generateSSHKey, generateNewKey, sshPublicKeyHint
+        case sshHostKeyChanged, sshJumpHost, sshDirectConnection, sshJumpHostHint, sshJumpHostCycle
+        case sshJumpRequiresKey
         // Repository locations
         case repositoryLocations, noRepositoryLocations, repositoryLocationsHint
         case addRepositoryLocation, computer, selectComputer, repositoryPath, repositoryPathHint
@@ -68,6 +71,26 @@ enum L10n {
 
     static func repositoryMismatch(expected: String, found: String) -> String {
         "Expected \(expected), but the Git remote points to \(found)."
+    }
+
+    static func sshVia(host: String) -> String {
+        "Via \(host)"
+    }
+
+    static func sshPasswordMissing(host: String) -> String {
+        "No SSH password is saved for \(host)."
+    }
+
+    static func sshPrivateKeyMissing(host: String) -> String {
+        "No SSH private key is saved for \(host)."
+    }
+
+    static func sshAuthenticationFailed(host: String) -> String {
+        "Authentication failed for \(host). Check its username and saved credential."
+    }
+
+    static func sshConnectionFailed(host: String, reason: String) -> String {
+        "Could not connect to \(host): \(reason)"
     }
 
     private static let strings: [Key: String] = [
@@ -147,9 +170,23 @@ enum L10n {
         .sshCommand: "SSH Command",
         .sshCommandInvalid: "Expected e.g. ssh user@host -p 22",
         .sshPassword: "Password",
+        .sshAuthentication: "Authentication",
+        .sshPasswordAuthentication: "Password",
+        .sshKeyAuthentication: "SSH Key",
+        .sshPublicKey: "Ed25519 Public Key",
+        .copyPublicKey: "Copy Public Key",
+        .copySSHSetupCommand: "Copy Setup Command",
+        .generateSSHKey: "Generate SSH Key",
+        .generateNewKey: "Replace Key",
+        .sshPublicKeyHint: "For a Mac target, copy the setup command and paste it into Terminal. For other systems, add the public key as a new line in ~/.ssh/authorized_keys.",
         .sshHostEditorTitle: "SSH Host",
         .save: "Save",
         .sshHostKeyChanged: "The SSH host key changed. The connection was rejected to protect this computer.",
+        .sshJumpHost: "Jump Host",
+        .sshDirectConnection: "Direct Connection",
+        .sshJumpHostHint: "Connect to this computer through another saved SSH host.",
+        .sshJumpHostCycle: "The jump-host configuration contains a cycle.",
+        .sshJumpRequiresKey: "Targets reached through a jump host use SSH key authentication.",
         .repositoryLocations: "Repository Locations",
         .noRepositoryLocations: "No Repository Locations",
         .repositoryLocationsHint: "Connect this GitHub repository to a working tree on this Mac or an SSH host.",

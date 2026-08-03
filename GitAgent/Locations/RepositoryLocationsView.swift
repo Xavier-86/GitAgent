@@ -322,13 +322,8 @@ struct RepositoryLocationsView: View {
                     locations.markFailed(id, error: settings.tr(.computerUnavailable))
                     return
                 }
-                guard let password = hosts.password(for: host), !password.isEmpty else {
-                    locations.markFailed(id, error: settings.tr(.sshPasswordMissing))
-                    return
-                }
                 probe = try await RepositoryLocationVerifier.verify(
-                    host: host,
-                    password: password,
+                    route: try hosts.connectionRoute(for: host),
                     path: location.path,
                     expectedRepository: repo.fullName
                 )

@@ -30,8 +30,7 @@ final class RepoLaunchStore {
 
   func deploy(
     _ request: RepoLaunchRequest,
-    host: SSHHostConfig?,
-    password: String?
+    route: SSHConnectionRoute?
   ) async -> RepoLaunchResult? {
     guard activeRecordID == nil else { return nil }
 
@@ -54,8 +53,7 @@ final class RepoLaunchStore {
     do {
       let result = try await RepoLaunchExecutor.deploy(
         request,
-        host: host,
-        password: password,
+        route: route,
         onStage: { [weak self] stage in
           self?.setStage(stage, for: record.id)
         },

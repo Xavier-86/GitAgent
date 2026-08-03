@@ -7,15 +7,29 @@
 
 import Foundation
 
+enum SSHAuthenticationKind: String, Codable, CaseIterable, Sendable {
+    case password
+    case ed25519Key
+}
+
 /// A saved SSH host. Only non-sensitive fields are persisted (JSON in
-/// UserDefaults) — the password lives in the Keychain, keyed by `id`.
-struct SSHHostConfig: Codable, Identifiable, Hashable {
+/// UserDefaults) — credentials live in the Keychain, keyed by `id`.
+struct SSHHostConfig: Codable, Identifiable, Hashable, Sendable {
     var id = UUID()
     /// Optional label; falls back to `user@host` for display.
     var name = ""
     var host = ""
     var port = 22
     var username = ""
+    /// Nil decodes older saved hosts as password-based authentication.
+    var authenticationKind: SSHAuthenticationKind?
+    /// Optional saved host used as the first SSH hop. The target remains a
+    /// standalone host with its own credentials and pinned host key.
+    var jumpHostID: ID?
+
+    var resolvedAuthenticationKind: SSHAuthenticationKind {
+        authenticationKind ?? .password
+    }
 
     var displayName: String {
         if !name.isEmpty { return name }

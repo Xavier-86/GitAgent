@@ -138,8 +138,7 @@ struct RepoLaunchForm: View {
       .onDisappear { deploymentTask?.cancel() }
       .sheet(item: $browseContext) { context in
         RemotePathPickerView(
-          host: context.host,
-          password: context.password,
+          route: context.route,
           initialPath: remoteDestination.trimmingCharacters(in: .whitespacesAndNewlines)
         ) { selected in
           remoteDestination = selected
@@ -351,11 +350,11 @@ struct RepoLaunchForm: View {
     guard case .remote(let hostID) = selectedTarget,
       let host = hosts.hosts.first(where: { $0.id == hostID })
     else { return }
-    guard let password = hosts.password(for: host), !password.isEmpty else {
-      browseError = settings.tr(.sshPasswordMissing)
-      return
+    do {
+      browseContext = RemoteBrowseContext(route: try hosts.connectionRoute(for: host))
+    } catch {
+      browseError = error.localizedDescription
     }
-    browseContext = RemoteBrowseContext(host: host, password: password)
   }
 
   private func formTextField(
@@ -422,7 +421,13 @@ struct RepoLaunchForm: View {
     case .remote(let id): hostID = id
     }
     let host = hostID.flatMap { id in hosts.hosts.first { $0.id == id } }
-    let password = host.flatMap { hosts.password(for: $0) }
+    let route: SSHConnectionRoute?
+    do {
+      route = try host.map { try hosts.connectionRoute(for: $0) }
+    } catch {
+      browseError = error.localizedDescription
+      return
+    }
     let request = RepoLaunchRequest(
       repositoryURL: repositoryURL.trimmingCharacters(in: .whitespacesAndNewlines),
       repositoryFullName: repo?.fullName,
@@ -436,7 +441,7 @@ struct RepoLaunchForm: View {
     )
     didStart = true
     deploymentTask = Task {
-      let deployed = await deployments.deploy(request, host: host, password: password)
+      let deployed = await deployments.deploy(request, route: route)
       guard !Task.isCancelled else {
         deploymentTask = nil
         return

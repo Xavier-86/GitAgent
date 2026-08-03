@@ -100,8 +100,7 @@ struct AddRepositoryLocationView: View {
     }
     .sheet(item: $browseContext) { context in
       RemotePathPickerView(
-        host: context.host,
-        password: context.password,
+        route: context.route,
         initialPath: trimmedPath
       ) { selected in
         path = selected
@@ -175,11 +174,11 @@ struct AddRepositoryLocationView: View {
   }
 
   private func browse(_ host: SSHHostConfig) {
-    guard let password = hosts.password(for: host), !password.isEmpty else {
-      browseError = settings.tr(.sshPasswordMissing)
-      return
+    do {
+      browseContext = RemoteBrowseContext(route: try hosts.connectionRoute(for: host))
+    } catch {
+      browseError = error.localizedDescription
     }
-    browseContext = RemoteBrowseContext(host: host, password: password)
   }
 
   private var pathFooter: String {
