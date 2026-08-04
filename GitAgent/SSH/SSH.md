@@ -36,9 +36,14 @@ user-selected working trees; it does not use SSH or require Remote Login.
   verification, and RepoLaunch all use the same resolved route. A directly
   reached first hop may use password or key authentication; targets configured
   through a jump host use Ed25519 key authentication.
-- **Sessions don't survive app backgrounding** (iOS suspends sockets) —
-  leaving the terminal screen disconnects. Long remote tasks belong in
-  `tmux`/`nohup` with a dispatch/poll model (future Agent layer concern).
+- **Terminal sessions don't survive app backgrounding** (iOS suspends sockets) —
+  leaving the terminal screen disconnects. Long remote tasks instead use the
+  dispatch/poll model: RepoLaunch deployments run detached in a `tmux` session
+  on the target machine — SSH hosts and the local Mac alike —
+  (`~/.gitagent/repolaunch/<id>/`, session `ga-rl-<id>`) and the app polls
+  status files plus `run.log`, re-attaching after disconnects and app restarts
+  (see `Agent/RepoLaunch/RepoLaunchExecutor.swift`). The future Agent layer
+  reuses this pattern.
 
 ## Files
 

@@ -135,7 +135,9 @@ struct RepoLaunchForm: View {
           remoteDestination = "~/Developer/\(derived)"
         }
       }
-      .onDisappear { deploymentTask?.cancel() }
+      // Dismissing the form deliberately does NOT cancel the deployment:
+      // remote runs are detached in tmux on the host and keep going in the
+      // background; only the explicit Cancel button stops them.
       .sheet(item: $browseContext) { context in
         RemotePathPickerView(
           route: context.route,

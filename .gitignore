@@ -11,6 +11,7 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+.build/release/
 .swiftpm/
 Package.resolved
 # ...but do lock the app's dependency versions:

@@ -105,6 +105,9 @@ enum RepoLaunchError: LocalizedError {
   case sshHostUnavailable
   case sshPasswordMissing
   case invalidVerificationResponse
+  case tmuxUnavailable
+  case remoteRunInterrupted
+  case connectionLost
 
   var errorDescription: String? {
     switch self {
@@ -122,6 +125,12 @@ enum RepoLaunchError: LocalizedError {
       return L10n.resolveCurrent(.sshPasswordMissing)
     case .invalidVerificationResponse:
       return L10n.resolveCurrent(.repoLaunchInvalidResult)
+    case .tmuxUnavailable:
+      return L10n.resolveCurrent(.repoLaunchTmuxUnavailable)
+    case .remoteRunInterrupted:
+      return L10n.resolveCurrent(.repoLaunchInterrupted)
+    case .connectionLost:
+      return L10n.resolveCurrent(.repoLaunchConnectionLost)
     }
   }
 }

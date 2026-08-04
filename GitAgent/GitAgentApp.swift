@@ -30,6 +30,10 @@ struct GitAgentApp: App {
                 // App-wide default font driven by the UI Font Size setting —
                 // exact points (dynamicTypeSize is a no-op on macOS).
                 .font(.system(size: CGFloat(settings.uiFontSize)))
+                .onAppear {
+                    // Re-attach to remote deployments that outlived the app.
+                    repoLaunch.resumeInterruptedDeployments(hosts: sshHosts)
+                }
                 #if os(macOS)
                 .onAppear {
                     // Activate at launch so the window comes to the front

@@ -53,6 +53,7 @@ enum L10n {
         case deploy, deploying, repoLaunchRunning, repoLaunchSucceeded, repoLaunchFailed
         case repoLaunchCancelled, repoLaunchInterrupted, repoLaunchInvalidURL
         case repoLaunchInvalidDestination, repoLaunchLocalUnavailable, repoLaunchInvalidResult
+        case repoLaunchTmuxUnavailable, repoLaunchConnectionLost
         case repoLaunchCommit
         case stagePreflight, stageCheckout, stageSetup, stageBuild, stageTest, stageVerify
         // Errors
@@ -251,6 +252,8 @@ enum L10n {
         .repoLaunchInvalidDestination: "Enter a valid destination path.",
         .repoLaunchLocalUnavailable: "Local deployment is only available on macOS.",
         .repoLaunchInvalidResult: "Deployment finished without valid repository verification output.",
+        .repoLaunchTmuxUnavailable: "tmux is required on the deployment computer (including this Mac). Install tmux, e.g. with Homebrew, and try again.",
+        .repoLaunchConnectionLost: "Connection to the deployment computer was lost.",
         .repoLaunchCommit: "Commit",
         .stagePreflight: "Preflight",
         .stageCheckout: "Checkout",

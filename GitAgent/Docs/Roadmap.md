@@ -228,8 +228,9 @@ Xcode target.
 - **CLI flag drift.** Vendor CLIs change headless flags; the Phase 1 relay
   pins one CLI version, the Phase 4 shim absorbs drift. Do not abstract
   early.
-- **iOS backgrounding.** Dispatch/poll via `tmux` is untested; Phase 1 must
-  validate re-attach before any UI polish.
+- **iOS backgrounding.** Dispatch/poll via `tmux` is implemented in RepoLaunch
+  (`Agent/RepoLaunch/RepoLaunchExecutor.swift`) with re-attach after socket
+  loss and app restarts; Phase 1 should reuse that validated path.
 - **Benchmark contamination.** Our curated tasks pin public repos; keep task
   definitions out of the app binary and out of any training-adjacent channel.
 - **Safety vs. convenience.** The confirmation loop adds friction to exactly
