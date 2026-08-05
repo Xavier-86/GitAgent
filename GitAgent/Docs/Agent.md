@@ -53,6 +53,13 @@ it as chat. Light GitHub-only tasks keep using the in-app tool loop
 | `AgentHost.swift` | Execution target model: resolved SSH route + verified working tree | not started |
 | `AgentViewModel.swift` | Event stream → chat cards for `Chat/` UI | not started |
 
+A Phase-1 minimal relay has landed in a different shape: the Coder agent
+(`Agent/Coder/`) runs a headless coding CLI (Kimi Code / Claude Code /
+Codex) as an interactive session inside tmux on the target, and the app
+attaches a full xterm.js terminal to it over the shared SSH route. It runs
+the CLI in yolo mode at the user's explicit request — the
+confirmation/safety loop above remains the planned long-term route.
+
 ## Implemented RepoLaunch contents
 
 | File | Role |

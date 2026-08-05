@@ -66,6 +66,7 @@
 				7AF0DE313014820B0011A0A9 /* Sources */,
 				7AF0DE323014820B0011A0A9 /* Frameworks */,
 				7AF0DE333014820B0011A0A9 /* Resources */,
+				7A0000000000000000000C01 /* Refresh .build release */,
 			);
 			buildRules = (
 			);
@@ -132,6 +133,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7A0000000000000000000C01 /* Refresh .build release */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Refresh .build release";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "# After every macOS Debug build (Xcode run), refresh the Release app in .build/release\n# so the packaged app never goes stale. Incremental, and skipped for Release/iOS builds.\nif [[ \"$CONFIGURATION\" == \"Debug\" && \"$PLATFORM_NAME\" == \"macosx\" ]]; then\n\t\"$SRCROOT/build-release.sh\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7AF0DE313014820B0011A0A9 /* Sources */ = {

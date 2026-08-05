@@ -15,6 +15,7 @@ struct GitAgentApp: App {
     @State private var sshHosts = SSHHostStore()
     @State private var repositoryLocations = RepositoryLocationStore()
     @State private var repoLaunch = RepoLaunchStore()
+    @State private var coder = CoderStore()
     @State private var terminalLauncher = TerminalLaunchCoordinator()
 
     var body: some Scene {
@@ -26,6 +27,7 @@ struct GitAgentApp: App {
                 .environment(sshHosts)
                 .environment(repositoryLocations)
                 .environment(repoLaunch)
+                .environment(coder)
                 .environment(terminalLauncher)
                 // App-wide default font driven by the UI Font Size setting —
                 // exact points (dynamicTypeSize is a no-op on macOS).
@@ -33,6 +35,8 @@ struct GitAgentApp: App {
                 .onAppear {
                     // Re-attach to remote deployments that outlived the app.
                     repoLaunch.resumeInterruptedDeployments(hosts: sshHosts)
+                    // Coder sessions are probed via SSH routes from the host store.
+                    coder.attach(hosts: sshHosts)
                 }
                 #if os(macOS)
                 .onAppear {

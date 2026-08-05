@@ -14,6 +14,7 @@ final class AppSettings {
     static let kimiBaseURLKey = "kimiBaseURL"
     static let kimiModelKey = "kimiModel"
     static let chatProviderKey = "chatProvider"
+    static let coderToolKey = "coderTool"
 
     /// Base font size (points) for rendered Markdown content.
     var fontSize: Int {
@@ -40,6 +41,11 @@ final class AppSettings {
                 kimiModel = chatProvider.defaultModel
             }
         }
+    }
+
+    /// Default coding CLI for new Coder agent tasks.
+    var coderTool: CoderTool {
+        didSet { UserDefaults.standard.set(coderTool.rawValue, forKey: Self.coderToolKey) }
     }
 
     /// API key for the selected provider, stored in the Keychain — never
@@ -73,6 +79,8 @@ final class AppSettings {
         terminalFontSize = storedTerminalSize > 0 ? storedTerminalSize : 13
         let storedProvider = UserDefaults.standard.string(forKey: Self.chatProviderKey) ?? ""
         chatProvider = ChatProvider(rawValue: storedProvider) ?? .kimiCode
+        let storedCoderTool = UserDefaults.standard.string(forKey: Self.coderToolKey) ?? ""
+        coderTool = CoderTool(rawValue: storedCoderTool) ?? .kimi
         kimiAPIKey = KeychainHelper.readKimiAPIKey() ?? ""
         kimiBaseURL = UserDefaults.standard.string(forKey: Self.kimiBaseURLKey)
             ?? ChatProvider.kimiCode.defaultBaseURL

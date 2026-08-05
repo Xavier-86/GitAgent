@@ -35,6 +35,28 @@ struct AgentView: View {
           }
           .padding(.vertical, 5)
         }
+
+        NavigationLink {
+          CoderView()
+        } label: {
+          HStack(spacing: 14) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+              .font(.title2)
+              .foregroundStyle(.purple)
+              .frame(width: 36, height: 36)
+              .background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(settings.tr(.coder))
+                .font(.headline)
+              Text(settings.tr(.coderDescription))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          .padding(.vertical, 5)
+        }
       }
     }
     .macTransparentScrollBackground()

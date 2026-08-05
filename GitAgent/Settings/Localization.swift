@@ -56,6 +56,11 @@ enum L10n {
         case repoLaunchTmuxUnavailable, repoLaunchConnectionLost
         case repoLaunchCommit
         case stagePreflight, stageCheckout, stageSetup, stageBuild, stageTest, stageVerify
+        // Coder agent
+        case coder, coderDescription, coderTool, coderWorkingCopy, coderSelectLocation
+        case coderNoLocations, coderNewSession, coderInitialPromptHint, coderStartSession
+        case coderSessions, coderNoSessions, coderKillSession, coderTurnFinished
+        case coderCreateFailed, coderToolUnavailable, coderLocalUnavailable
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -261,6 +266,22 @@ enum L10n {
         .stageBuild: "Build",
         .stageTest: "Test",
         .stageVerify: "Verify",
+        .coder: "Coder",
+        .coderDescription: "Run interactive coding-CLI sessions (Kimi Code, Claude Code, or Codex) in tmux on a connected working tree.",
+        .coderTool: "Tool",
+        .coderWorkingCopy: "Working Copy",
+        .coderSelectLocation: "Select a working copy",
+        .coderNoLocations: "No connected repository locations. Connect a repository to a working tree first.",
+        .coderNewSession: "New Session",
+        .coderInitialPromptHint: "Initial task — leave empty to start an interactive session…",
+        .coderStartSession: "Start Session",
+        .coderSessions: "Sessions",
+        .coderNoSessions: "No Coder sessions yet.",
+        .coderKillSession: "Kill Session",
+        .coderTurnFinished: "Turn finished",
+        .coderCreateFailed: "Could Not Start Session",
+        .coderToolUnavailable: "The selected coding CLI is not installed on the target computer.",
+        .coderLocalUnavailable: "Local sessions are only available on macOS.",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

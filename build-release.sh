@@ -11,6 +11,10 @@ INSTALL_PATH="/Applications/$APP_NAME"
 cd "$ROOT_DIR"
 
 echo "Building $APP_NAME (Release)..."
+# Scrub the environment: when this script runs nested inside an Xcode script
+# phase it would otherwise inherit the outer build's exported settings
+# (ENABLE_DEBUG_DYLIB etc.), which breaks the inner build.
+env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
 xcodebuild \
   -project GitAgent.xcodeproj \
   -scheme GitAgent \

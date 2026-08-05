@@ -5,3 +5,8 @@
 // lives separately in the gitignored GitAgent/Auth/LocalSecrets.swift.
 
 #include? "Local.xcconfig"
+
+// The "Refresh .build release" script phase runs build-release.sh, which
+// shells out to xcodebuild and writes .build/release — impossible under the
+// default user-script sandbox, so script phases run unsandboxed.
+ENABLE_USER_SCRIPT_SANDBOXING = NO
