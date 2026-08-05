@@ -6,6 +6,13 @@
 //
 
 import SwiftUI
+import PDFKit
+
+#if canImport(UIKit)
+typealias PlatformImage = UIImage
+#elseif canImport(AppKit)
+typealias PlatformImage = NSImage
+#endif
 
 // MARK: - File browser
 
@@ -56,7 +63,7 @@ struct FileBrowserView: View {
                         Button {
                             onOpenTarget(.file(makeRef(for: item)))
                         } label: {
-                            rowLabel(item, icon: item.isMarkdown ? "doc.richtext" : "doc.text")
+                            rowLabel(item, icon: fileIcon(for: item))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.primary)
@@ -119,6 +126,13 @@ struct FileBrowserView: View {
         RepoFileRef(owner: owner, repo: repo, branch: branch, path: item.path)
     }
 
+    private func fileIcon(for item: RepoContent) -> String {
+        if item.isMarkdown { return "doc.richtext" }
+        if item.isImage { return "photo" }
+        if item.isPDF { return "doc.richtext" }
+        return "doc.text"
+    }
+
     private func load() async {
         guard let client = auth.client else { return }
         isLoading = true
@@ -167,8 +181,14 @@ struct DirectoryContentView: View {
         .task {
             guard let client = auth.client else { return }
             if let entry = try? await client.submoduleEntry(owner: ref.owner, repo: ref.repo,
-                                                            path: ref.path, ref: ref.branch) {
-                submoduleRef = entry.submoduleRepoRef(fallbackOwner: ref.owner)
+                                                            path: ref.path, ref: ref.branch),
+               let repoRef = entry.submoduleRepoRef(fallbackOwner: ref.owner) {
+                submoduleRef = repoRef
+            } else if let (link, subpath) = await client.submoduleRedirect(owner: ref.owner, repo: ref.repo,
+                                                                           path: ref.path, ref: ref.branch) {
+                // The directory sits inside a submodule — open the linked repo at the subpath.
+                submoduleRef = RepoLinkRef(owner: link.owner, name: link.name,
+                                           initialPath: subpath, initialIsDirectory: true)
             }
             checked = true
         }
@@ -211,9 +231,70 @@ struct ResolvedLinkTargetView: View {
                 submoduleRef = repoRef
                 return
             }
+            // Ambiguous path inside a submodule — file/dir is resolved in the linked repo.
+            if let (link, subpath) = await client.submoduleRedirect(owner: ref.owner, repo: ref.repo,
+                                                                    path: ref.path, ref: ref.branch) {
+                submoduleRef = RepoLinkRef(owner: link.owner, name: link.name, initialPath: subpath)
+                return
+            }
             isDirectory = (try? await client.isDirectory(owner: ref.owner, repo: ref.repo,
                                                          path: ref.path, ref: ref.branch)) ?? false
         }
+    }
+}
+
+// MARK: - Opened file router
+
+/// Routes an opened file link to the right viewer. First checks whether a
+/// path prefix is a submodule — Markdown links can point at files inside a
+/// submodule, and those only exist in the linked repository.
+struct OpenedFileView: View {
+    @Environment(GitHubAuthManager.self) private var auth
+    let ref: RepoFileRef
+    let onOpenTarget: (RepoLinkTarget) -> Void
+
+    @State private var redirect: RepoLinkRef?
+    @State private var checked = false
+
+    var body: some View {
+        Group {
+            if let redirect {
+                LinkedRepoView(ref: redirect)
+            } else if checked {
+                content
+            } else {
+                TopLoadingView()
+            }
+        }
+        .task { await probeSubmodule() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if ref.isMarkdown {
+            MarkdownFileView(ref: ref, onOpenTarget: onOpenTarget)
+        } else if ref.isImage {
+            ImageFileView(ref: ref)
+        } else if ref.isPDF {
+            PDFFileView(ref: ref)
+        } else if (ref.path as NSString).pathExtension.isEmpty {
+            ResolvedLinkTargetView(ref: ref, onOpenTarget: onOpenTarget)
+        } else {
+            TextFileView(ref: ref)
+        }
+    }
+
+    private func probeSubmodule() async {
+        // Root-level files can't sit inside a submodule — skip the API calls.
+        guard ref.path.contains("/"), let client = auth.client else {
+            checked = true
+            return
+        }
+        if let (link, subpath) = await client.submoduleRedirect(owner: ref.owner, repo: ref.repo,
+                                                                path: ref.path, ref: ref.branch) {
+            redirect = RepoLinkRef(owner: link.owner, name: link.name, initialPath: subpath)
+        }
+        checked = true
     }
 }
 
@@ -347,3 +428,122 @@ struct TextFileView: View {
         }
     }
 }
+
+// MARK: - Image file
+
+/// Raster image preview (PNG/JPEG/GIF/WebP/…). Downloads the raw bytes with
+/// auth, so private repositories work.
+struct ImageFileView: View {
+    @Environment(GitHubAuthManager.self) private var auth
+    @Environment(AppSettings.self) private var settings
+    let ref: RepoFileRef
+
+    @State private var image: Image?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let image {
+                ScrollView {
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .padding()
+                }
+            } else if let errorMessage {
+                ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
+                                       description: Text(errorMessage))
+            } else {
+                TopLoadingView()
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let client = auth.client else { return }
+        do {
+            let data = try await client.fileData(owner: ref.owner, repo: ref.repo,
+                                                 path: ref.path, ref: ref.branch)
+            guard let decoded = PlatformImage(data: data) else { throw GitHubError.invalidResponse }
+            #if canImport(UIKit)
+            image = Image(uiImage: decoded)
+            #else
+            image = Image(nsImage: decoded)
+            #endif
+        } catch GitHubError.unauthorized {
+            auth.logout()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - PDF file
+
+/// PDF preview backed by PDFKit's `PDFView`. Downloads the raw bytes with
+/// auth, so private repositories work.
+struct PDFFileView: View {
+    @Environment(GitHubAuthManager.self) private var auth
+    @Environment(AppSettings.self) private var settings
+    let ref: RepoFileRef
+
+    @State private var document: PDFDocument?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let document {
+                PDFKitView(document: document)
+            } else if let errorMessage {
+                ContentUnavailableView(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle",
+                                       description: Text(errorMessage))
+            } else {
+                TopLoadingView()
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let client = auth.client else { return }
+        do {
+            let data = try await client.fileData(owner: ref.owner, repo: ref.repo,
+                                                 path: ref.path, ref: ref.branch)
+            guard let document = PDFDocument(data: data) else { throw GitHubError.invalidResponse }
+            self.document = document
+        } catch GitHubError.unauthorized {
+            auth.logout()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+/// Cross-platform wrapper around PDFKit's `PDFView` (same pattern as
+/// `WebViewRepresentable`).
+private struct PDFKitView {
+    let document: PDFDocument
+
+    @MainActor
+    func makePDFView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.document = document
+        return view
+    }
+
+    func update(_ view: PDFView, context: Context) {}
+}
+
+#if canImport(UIKit)
+extension PDFKitView: UIViewRepresentable {
+    func makeUIView(context: Context) -> PDFView { makePDFView(context: context) }
+    func updateUIView(_ view: PDFView, context: Context) { update(view, context: context) }
+}
+#elseif canImport(AppKit)
+extension PDFKitView: NSViewRepresentable {
+    func makeNSView(context: Context) -> PDFView { makePDFView(context: context) }
+    func updateNSView(_ view: PDFView, context: Context) { update(view, context: context) }
+}
+#endif

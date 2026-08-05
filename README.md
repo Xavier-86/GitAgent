@@ -14,7 +14,7 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
 
 **Browse your repositories** — sign in with GitHub OAuth Device Flow (token in the system Keychain); your own, private, and starred repositories, plus a profile view with the contribution graph.
 
-**Read and explore code** — READMEs and files with full Markdown rendering (math, syntax highlighting, anchor jumps); links to files, folders, and repositories all open inside the app.
+**Read and explore code** — READMEs and files with full Markdown rendering (math, syntax highlighting, anchor jumps); images (PNG/JPEG/GIF/WebP/…) and PDFs open in built-in viewers; links to files, folders, and repositories all open inside the app.
 
 **Chat with AI about your code** — Kimi Code, Moonshot AI, OpenAI, DeepSeek, Anthropic, or any OpenAI-compatible endpoint, with models fetched automatically; type `@` to reference a repository, then `/` to attach files or folders; streaming Markdown answers, sessions persist locally, API keys stay in the Keychain.
 

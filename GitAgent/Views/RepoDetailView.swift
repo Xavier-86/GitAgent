@@ -45,6 +45,14 @@ struct RepoFileRef: Hashable {
         let ext = (path as NSString).pathExtension.lowercased()
         return ext == "md" || ext == "markdown"
     }
+    /// Raster image formats natively decodable by UIImage/NSImage (SVG stays a text file).
+    var isImage: Bool {
+        let ext = (path as NSString).pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif", "ico"].contains(ext)
+    }
+    var isPDF: Bool {
+        (path as NSString).pathExtension.lowercased() == "pdf"
+    }
 }
 
 /// Navigation value identifying a repository by owner and name (a github.com link tapped
@@ -52,6 +60,11 @@ struct RepoFileRef: Hashable {
 struct RepoLinkRef: Hashable {
     let owner: String
     let name: String
+    /// Set when the link points at a path inside the repository (a Markdown
+    /// link into a submodule): the repo opens with that path already open.
+    var initialPath: String? = nil
+    /// Whether `initialPath` is a directory link (defaults to file).
+    var initialIsDirectory: Bool = false
 }
 
 /// Something opened from a Markdown link or the file browser, shown inline
@@ -125,6 +138,13 @@ struct RepoDetailView: View {
     /// Inline stack of content opened from Markdown links — shown below the
     /// pinned picker instead of replacing the page.
     @State private var opened: [RepoLinkTarget] = []
+
+    /// `initialTarget` opens the repo with a link target already on the inline
+    /// stack (links into a submodule open the linked repo at that path).
+    init(repo: Repo, initialTarget: RepoLinkTarget? = nil) {
+        self.repo = repo
+        _opened = State(initialValue: initialTarget.map { [$0] } ?? [])
+    }
 
     enum DetailTab: CaseIterable, Identifiable {
         case readme, files
@@ -217,13 +237,7 @@ struct RepoDetailView: View {
     private func openedContent(_ target: RepoLinkTarget) -> some View {
         switch target {
         case .file(let ref):
-            if ref.isMarkdown {
-                MarkdownFileView(ref: ref, onOpenTarget: openTarget)
-            } else if (ref.path as NSString).pathExtension.isEmpty {
-                ResolvedLinkTargetView(ref: ref, onOpenTarget: openTarget)
-            } else {
-                TextFileView(ref: ref)
-            }
+            OpenedFileView(ref: ref, onOpenTarget: openTarget)
         case .directory(let ref):
             DirectoryContentView(ref: ref, onOpenTarget: openTarget)
         case .repo(let ref):
@@ -292,7 +306,7 @@ struct LinkedRepoView: View {
     var body: some View {
         Group {
             if let repo {
-                RepoDetailView(repo: repo)
+                RepoDetailView(repo: repo, initialTarget: initialTarget(in: repo))
             } else if let errorMessage {
                 ContentUnavailableView {
                     Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
@@ -312,6 +326,15 @@ struct LinkedRepoView: View {
         #endif
         .iOSHidesBackButton()
         .task { await load() }
+    }
+
+    /// Links into a submodule open the linked repo with the inner path already
+    /// on the inline stack, resolved against the linked repo's default branch.
+    private func initialTarget(in repo: Repo) -> RepoLinkTarget? {
+        guard let path = ref.initialPath else { return nil }
+        let fileRef = RepoFileRef(owner: ref.owner, repo: ref.name,
+                                  branch: repo.defaultBranch, path: path)
+        return ref.initialIsDirectory ? .directory(fileRef) : .file(fileRef)
     }
 
     private func load() async {

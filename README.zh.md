@@ -14,7 +14,7 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
 
 **浏览你的仓库** —— 通过 GitHub OAuth Device Flow 登录（token 存系统钥匙串）；你自己的、私有的和星标的仓库，外加带贡献图的个人主页。
 
-**阅读与探索代码** —— README 和文件均以完整 Markdown 渲染（数学公式、语法高亮、锚点跳转）；文件、文件夹和仓库的链接全部在应用内打开。
+**阅读与探索代码** —— README 和文件均以完整 Markdown 渲染（数学公式、语法高亮、锚点跳转）；图片（PNG/JPEG/GIF/WebP 等）和 PDF 均有内置查看器；文件、文件夹和仓库的链接全部在应用内打开。
 
 **与 AI 聊你的代码** —— 支持 Kimi Code、Moonshot AI、OpenAI、DeepSeek、Anthropic 或任何兼容 OpenAI 的端点，模型列表自动拉取；输入 `@` 引用仓库，再输入 `/` 附加文件或文件夹；回答流式输出、Markdown 渲染，会话本地持久化，API key 只存钥匙串。
 

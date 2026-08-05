@@ -107,6 +107,16 @@ struct RepoContent: Codable, Identifiable, Hashable {
         return ext == "md" || ext == "markdown"
     }
 
+    /// Raster image formats natively decodable by UIImage/NSImage.
+    var isImage: Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif", "ico"].contains(ext)
+    }
+
+    var isPDF: Bool {
+        (name as NSString).pathExtension.lowercased() == "pdf"
+    }
+
     /// GitHub misreports submodules as plain `"type": "file"` in directory
     /// listings — only a direct single-path lookup returns `"submodule"`.
     /// In a listing, a submodule is the entry with no download URL whose

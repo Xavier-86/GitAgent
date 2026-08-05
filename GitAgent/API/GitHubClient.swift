@@ -50,6 +50,13 @@ final class GitHubClient {
     /// File/README text — avoids refetching when navigating back and forth.
     private static let textCache = NSCache<NSString, NSString>()
 
+    /// Raw file bytes (images, PDFs), ~64 MB cap.
+    private static let dataCache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
+        cache.totalCostLimit = 64 * 1024 * 1024
+        return cache
+    }()
+
     final class CachedImage: NSObject {
         let data: Data
         let mimeType: String
@@ -213,6 +220,37 @@ final class GitHubClient {
         guard let entry = try? decoder.decode(RepoContent.self, from: data),
               entry.type == .submodule else { return nil }
         return entry
+    }
+
+    /// Finds a submodule among the path's ancestor directories — Markdown links
+    /// can point at files/folders *inside* a submodule, and those paths only
+    /// exist in the linked repository. Returns the linked repository and the
+    /// remaining path within it, or nil when no ancestor is a submodule.
+    func submoduleRedirect(owner: String, repo: String, path: String, ref: String? = nil) async -> (link: RepoLinkRef, subpath: String)? {
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count > 1 else { return nil }
+        for i in 1..<components.count {
+            let prefix = components.prefix(i).joined(separator: "/")
+            if let entry = try? await submoduleEntry(owner: owner, repo: repo, path: prefix, ref: ref),
+               let link = entry.submoduleRepoRef(fallbackOwner: owner) {
+                return (link, components.suffix(from: i).joined(separator: "/"))
+            }
+        }
+        return nil
+    }
+
+    /// Downloads raw file bytes (images, PDFs, other binary). Results are
+    /// cached for the app session (~64 MB cap).
+    func fileData(owner: String, repo: String, path: String, ref: String? = nil) async throws -> Data {
+        let cacheKey = "\(owner)/\(repo)/\(path)#\(ref ?? "")" as NSString
+        if let cached = Self.dataCache.object(forKey: cacheKey) { return cached as Data }
+        var query: [URLQueryItem] = []
+        if let ref { query.append(URLQueryItem(name: "ref", value: ref)) }
+        let (data, response) = try await URLSession.shared.data(
+            for: makeRequest(path: "/repos/\(owner)/\(repo)/contents/\(path)", query: query, raw: true))
+        try validate(response, data: data)
+        Self.dataCache.setObject(data as NSData, forKey: cacheKey, cost: data.count)
+        return data
     }
 
     /// Reads a file as plain text. `ref` pins the read to a branch/tag/commit
