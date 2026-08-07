@@ -14,7 +14,7 @@ import WebKit
 /// katex.min.css resolves fonts via a relative `fonts/` path.
 enum WebAssets {
     /// Bump this when the bundled assets change to force re-installation.
-    private static let version = "13"
+    private static let version = "14"
 
     /// Installed once per app launch — web views (one per chat bubble) must
     /// not hit the file system for the version check on every creation.

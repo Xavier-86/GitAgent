@@ -58,6 +58,14 @@ final class TerminalBridge {
         webView?.evaluateJavaScript("setTermFontSize(\(size))", completionHandler: nil)
     }
 
+    /// Re-fits the terminal and reports its size again even when unchanged —
+    /// a session that connected after the page's initial fit never saw that
+    /// resize event, so its PTY stayed at the default 80x24. Call this when
+    /// a session reaches the connected state.
+    func refitAndReportSize() {
+        webView?.evaluateJavaScript("refit(); reportSize();", completionHandler: nil)
+    }
+
     /// Called by the coordinator when the page signals `terminalReady`.
     func didBecomeReady() {
         isReady = true

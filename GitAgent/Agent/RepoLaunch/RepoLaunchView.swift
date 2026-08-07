@@ -27,8 +27,10 @@ struct RepoLaunchView: View {
   var body: some View {
     if showsInitialDeploymentForm {
       RepoLaunchForm(repo: nil, presentation: .navigation)
+        .sidebarToggleButton()
     } else {
       RepoLaunchHistoryView()
+        .sidebarToggleButton()
     }
   }
 }

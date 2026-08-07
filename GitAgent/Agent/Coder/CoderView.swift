@@ -38,6 +38,31 @@ struct CoderView: View {
     return connectedLocations.count == 1 ? connectedLocations.first : nil
   }
 
+  /// Connected working copies grouped by host: this Mac is just one host
+  /// among the saved SSH hosts, not a separate category.
+  private var locationGroups: [(title: String, locations: [RepositoryLocation])] {
+    var groups: [(title: String, locations: [RepositoryLocation])] = []
+    for location in connectedLocations {
+      let title: String
+      if let hostID = location.hostID {
+        title = hosts.hosts.first { $0.id == hostID }?.locationDisplayName ?? "SSH"
+      } else {
+        title = settings.tr(.thisMac)
+      }
+      if let index = groups.firstIndex(where: { $0.title == title }) {
+        groups[index].locations.append(location)
+      } else {
+        groups.append((title, [location]))
+      }
+    }
+    // "This Mac" first, then the other hosts alphabetically.
+    return groups.sorted {
+      ($0.locations.first?.hostID == nil) != ($1.locations.first?.hostID == nil)
+        ? $0.locations.first?.hostID == nil
+        : $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+    }
+  }
+
   var body: some View {
     List {
       Section(settings.tr(.coderNewSession)) {
@@ -70,19 +95,9 @@ struct CoderView: View {
             Picker(settings.tr(.coderWorkingCopy), selection: $selectedLocationID) {
               Text(settings.tr(.coderSelectLocation))
                 .tag(Optional<RepositoryLocation.ID>.none)
-              let localLocations = connectedLocations.filter(\.isLocal)
-              if !localLocations.isEmpty {
-                Section(settings.tr(.thisMac)) {
-                  ForEach(localLocations) { location in
-                    locationLabel(location)
-                      .tag(Optional(location.id))
-                  }
-                }
-              }
-              let remoteLocations = connectedLocations.filter { !$0.isLocal }
-              if !remoteLocations.isEmpty {
-                Section("SSH") {
-                  ForEach(remoteLocations) { location in
+              ForEach(locationGroups, id: \.title) { group in
+                Section(group.title) {
+                  ForEach(group.locations) { location in
                     locationLabel(location)
                       .tag(Optional(location.id))
                   }
@@ -145,6 +160,7 @@ struct CoderView: View {
       }
     }
     .macTransparentScrollBackground()
+    .sidebarToggleButton()
     .navigationTitle(settings.tr(.coder))
     .alert(
       settings.tr(.coderCreateFailed),

@@ -21,6 +21,13 @@ struct CoderTerminalView: View {
   @State private var bridge = TerminalBridge()
   @State private var session = SSHTerminalSession()
   @State private var activeTerminal: ActiveTerminalKind = .ssh
+  #if os(iOS)
+    // A chat-style message bar: on a phone, typing prompts into a raw
+    // terminal keyboard is painful. On by default; the toolbar toggle
+    // restores the plain full-screen terminal.
+    @State private var showsComposer = true
+    @State private var draft = ""
+  #endif
   #if os(macOS)
     @State private var localSession = LocalTerminalSession()
   #endif
@@ -55,7 +62,23 @@ struct CoderTerminalView: View {
     .navigationTitle(record?.repositoryFullName ?? settings.tr(.coder))
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            showsComposer.toggle()
+          } label: {
+            Image(systemName: showsComposer ? "text.bubble.fill" : "text.bubble")
+          }
+          .accessibilityLabel(settings.tr(.coderToggleComposer))
+        }
+      }
+      .safeAreaInset(edge: .bottom) {
+        if showsComposer {
+          composerBar
+        }
+      }
     #endif
+    .sidebarToggleButton()
     .onAppear {
       // Viewing the session consumes its completion marker.
       coder.clearTurnFinished(recordID)
@@ -64,7 +87,14 @@ struct CoderTerminalView: View {
     // The tmux session ended (killed or detached and the shell exited):
     // the PTY closed, so pop back to the session list.
     .onChange(of: terminalState) { _, state in
-      if state == .disconnected { dismiss() }
+      if state == .connected {
+        // The page's initial fit can report its size before the session is
+        // connected; that report is dropped and the PTY keeps the default
+        // 80x24, so re-fit and re-report once the channel is up.
+        bridge.refitAndReportSize()
+      } else if state == .disconnected {
+        dismiss()
+      }
     }
     .onDisappear {
       session.disconnect()
@@ -100,6 +130,40 @@ struct CoderTerminalView: View {
       Button(settings.tr(.back)) { dismiss() }
     }
   }
+
+  #if os(iOS)
+    private var composerBar: some View {
+      HStack(alignment: .bottom, spacing: 10) {
+        TextField(
+          "",
+          text: $draft,
+          prompt: Text(settings.tr(.coderMessageHint)),
+          axis: .vertical
+        )
+        .lineLimit(1...5)
+        .textFieldStyle(.roundedBorder)
+        .disabled(terminalState != .connected)
+
+        Button(settings.tr(.coderSend)) { sendDraft() }
+          .buttonStyle(.borderedProminent)
+          .disabled(draft.isEmpty || terminalState != .connected)
+      }
+      .padding(.horizontal)
+      .padding(.vertical, 8)
+      .background(.bar)
+    }
+
+    /// Types the draft into the session and submits it with Return, exactly
+    /// like typing in the terminal — the attached tmux client forwards the
+    /// bytes to the coding CLI's pane.
+    private func sendDraft() {
+      let text = draft
+      guard !text.isEmpty, terminalState == .connected else { return }
+      session.send(Data(text.utf8))
+      session.send(Data("\r".utf8))
+      draft = ""
+    }
+  #endif
 
   // MARK: - Connect
 

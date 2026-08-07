@@ -22,7 +22,9 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
 
 **把仓库关联到工作树** —— 将 GitHub 仓库关联到这台 Mac 上的文件夹或 SSH 主机上的路径，并自动验证；打开已连接的位置，直接进入位于该仓库路径的终端。
 
-**用 RepoLaunch 部署仓库** —— 把任意 git URL 克隆到这台 Mac 或 SSH 主机，流程清晰可见（预检 → checkout → setup/build/test → 验证）；绝不覆盖本地修改；部署成功后自动在新的工作树中打开终端。RepoLaunch 是 Agent 目录里的第一个智能体——驱动远程编码 CLI 的任务型智能体正在开发中。
+**用 RepoLaunch 部署仓库** —— 把任意 git URL 克隆到这台 Mac 或 SSH 主机，流程清晰可见（预检 → checkout → setup/build/test → 验证）；绝不覆盖本地修改；部署成功后自动在新的工作树中打开终端。灵感来自微软的 [RepoLaunch](https://github.com/microsoft/RepoLaunch)。
+
+**用 Coder 智能体写代码** —— 在任意已连接的工作树上运行交互式编码 CLI 会话（Kimi Code、Claude Code 或 Codex），基于 tmux，可附带初始任务；会话在应用重启后依然存在，随时在完整终端中重新接管——iOS 上提供对话式输入条，因为在手机上直接操作终端键盘太痛苦；一轮对话完成后会标记会话并发送通知。
 
 ## 应用导览
 
@@ -59,10 +61,21 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
   <img src="assets/mac/local.png" width="420" alt="macOS —— 仓库位置">
 </p>
 
-*Agent 目录：RepoLaunch 是目前唯一可用的智能体——它在本地或通过 SSH 克隆并准备好一个仓库。更多智能体正在开发中。*
+*Agent 目录：RepoLaunch 在本地或通过 SSH 克隆并准备好一个仓库；Coder 在已连接的工作树上运行交互式编码 CLI 会话。*
 
 <p>
-  <img src="assets/mac/agent.png" width="400" alt="macOS —— Agent 目录">
+  <img src="assets/mac/agent.png" width="560" alt="macOS —— Agent 目录">
+</p>
+
+*Coder：选择 CLI 和工作副本，可选填初始任务——一轮对话完成后会在会话列表中标记。*
+
+<p>
+  <img src="assets/mac/coder.png" width="800" alt="macOS —— Coder 会话">
+</p>
+
+*RepoLaunch 的部署分阶段执行、经过验证，并保存在持久历史中。*
+
+<p>
   <img src="assets/mac/repo.png" width="400" alt="macOS —— RepoLaunch 部署历史">
 </p>
 
@@ -88,11 +101,17 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
   <img src="assets/ios/files.png" width="200" alt="iOS —— 文件浏览器">
 </p>
 
-*终端主机——支持多跳路由（"Via 5090" 表示经由跳板机访问这台 Mac）——以及带有 RepoLaunch 的 Agent 目录。*
+*终端主机——支持多跳路由（"Via 5090" 表示经由跳板机访问这台 Mac）。*
 
 <p>
   <img src="assets/ios/terminal.png" width="200" alt="iOS —— 终端主机">
-  <img src="assets/ios/agent.png" width="200" alt="iOS —— Agent 目录">
+</p>
+
+*Agent 目录（RepoLaunch 和 Coder），以及 iPhone 上的 Coder 会话列表。*
+
+<p>
+  <img src="assets/ios/agent.jpg" width="200" alt="iOS —— Agent 目录">
+  <img src="assets/ios/coder.jpg" width="200" alt="iOS —— Coder 会话">
 </p>
 
 *iOS 上的设置：字号和 AI 聊天配置。*

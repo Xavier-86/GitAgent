@@ -61,6 +61,7 @@ enum L10n {
         case coderNoLocations, coderNewSession, coderInitialPromptHint, coderStartSession
         case coderSessions, coderNoSessions, coderKillSession, coderTurnFinished
         case coderCreateFailed, coderToolUnavailable, coderLocalUnavailable
+        case coderMessageHint, coderSend, coderToggleComposer
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -282,6 +283,9 @@ enum L10n {
         .coderCreateFailed: "Could Not Start Session",
         .coderToolUnavailable: "The selected coding CLI is not installed on the target computer.",
         .coderLocalUnavailable: "Local sessions are only available on macOS.",
+        .coderMessageHint: "Message the session…",
+        .coderSend: "Send",
+        .coderToggleComposer: "Toggle Message Bar",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

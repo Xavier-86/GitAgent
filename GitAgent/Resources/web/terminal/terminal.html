@@ -42,6 +42,13 @@
   function refit() { try { fitAddon.fit(); } catch (e) {} }
   window.addEventListener('resize', refit);
 
+  // Reports the current size even when unchanged — a session that connects
+  // after the page's initial fit never saw that resize event, so its PTY
+  // would stay at the default 80x24 until the next manual window resize.
+  function reportSize() {
+    window.webkit.messageHandlers.terminalResize.postMessage({ cols: term.cols, rows: term.rows });
+  }
+
   // iOS touch scrolling: xterm.js has no built-in touch scroll, so translate
   // single-finger drags (with momentum) into synthetic wheel events. They go
   // through xterm's own wheel handling, so scrollback scrolls in normal mode

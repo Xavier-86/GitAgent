@@ -67,6 +67,14 @@ struct SSHView: View {
             }
             terminalLauncher.consume(request.id)
         }
+        .onChange(of: terminalState) { _, state in
+            if state == .connected {
+                // The page's initial fit can report its size before the
+                // channel is up; that report is dropped and the PTY keeps
+                // the default 80x24, so re-fit and re-report on connect.
+                bridge.refitAndReportSize()
+            }
+        }
         .onDisappear { disconnectAll() }
     }
 

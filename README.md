@@ -22,7 +22,9 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
 
 **Link repositories to working trees** — connect a GitHub repository to a folder on this Mac or a path on an SSH host, with automatic verification; opening a connected location drops you into a terminal, right at the repository.
 
-**Deploy with RepoLaunch** — clone any git URL to this Mac or an SSH host through a visible staged workflow (preflight → checkout → setup/build/test → verify); never overwrites local changes; a successful deploy opens a terminal at the new working tree. RepoLaunch is the first agent in the catalog — task-oriented agents that drive a remote coding CLI are planned next.
+**Deploy with RepoLaunch** — clone any git URL to this Mac or an SSH host through a visible staged workflow (preflight → checkout → setup/build/test → verify); never overwrites local changes; a successful deploy opens a terminal at the new working tree. Inspired by Microsoft's [RepoLaunch](https://github.com/microsoft/RepoLaunch).
+
+**Code with the Coder agent** — run interactive coding-CLI sessions (Kimi Code, Claude Code, or Codex) in tmux on any connected working tree, with an optional initial task; sessions survive app restarts and re-attach in a full terminal — on iOS with a chat-style message bar, since a raw terminal keyboard is painful on a phone; a finished turn marks the session and sends a notification.
 
 ## A quick tour
 
@@ -59,10 +61,21 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
   <img src="assets/mac/local.png" width="420" alt="macOS — repository locations">
 </p>
 
-*The Agent catalog: RepoLaunch is the first available agent — it clones and prepares a repository locally or over SSH. More agents are under development.*
+*The Agent catalog: RepoLaunch clones and prepares a repository locally or over SSH; Coder runs interactive coding-CLI sessions on a connected working tree.*
 
 <p>
-  <img src="assets/mac/agent.png" width="400" alt="macOS — Agent catalog">
+  <img src="assets/mac/agent.png" width="560" alt="macOS — Agent catalog">
+</p>
+
+*Coder: pick the CLI and the working copy, optionally give an initial task — a finished turn is marked in the session list.*
+
+<p>
+  <img src="assets/mac/coder.png" width="800" alt="macOS — Coder sessions">
+</p>
+
+*RepoLaunch deployments are staged, verified, and kept in a persistent history.*
+
+<p>
   <img src="assets/mac/repo.png" width="400" alt="macOS — RepoLaunch deployment history">
 </p>
 
@@ -88,11 +101,17 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
   <img src="assets/ios/files.png" width="200" alt="iOS — file browser">
 </p>
 
-*Terminal hosts — including multi-hop routes ("Via 5090" reaches the Mac through a jump host) — and the Agent catalog with RepoLaunch.*
+*Terminal hosts — including multi-hop routes ("Via 5090" reaches the Mac through a jump host).*
 
 <p>
   <img src="assets/ios/terminal.png" width="200" alt="iOS — terminal hosts">
-  <img src="assets/ios/agent.png" width="200" alt="iOS — Agent catalog">
+</p>
+
+*The Agent catalog — RepoLaunch and Coder — and Coder sessions on iPhone.*
+
+<p>
+  <img src="assets/ios/agent.jpg" width="200" alt="iOS — Agent catalog">
+  <img src="assets/ios/coder.jpg" width="200" alt="iOS — Coder sessions">
 </p>
 
 *Settings on iOS: font sizes and AI chat configuration.*

@@ -157,37 +157,19 @@ struct MainView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     #endif
                     .iOSHidesBackButton()
-                    .modifier(SidebarToggleButton(visibility: $splitVisibility))
+                    .sidebarToggleButton()
                     .navigationDestination(for: Repo.self) { repo in
                         RepoDetailView(repo: repo)
-                            .modifier(SidebarToggleButton(visibility: $splitVisibility))
+                            .sidebarToggleButton()
                     }
             }
         }
-    }
-
-    /// The one fixed sidebar toggle. The system's variant changes icon and
-    /// placement with platform and split state, so it is removed everywhere
-    /// and replaced with this button. Applied as a modifier because toolbar
-    /// items do not propagate to pushed pages in the detail stack.
-    private struct SidebarToggleButton: ViewModifier {
-        @Binding var visibility: NavigationSplitViewVisibility
-
-        func body(content: Content) -> some View {
-            content
-                .toolbar(removing: .sidebarToggle)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            withAnimation {
-                                visibility = visibility == .detailOnly ? .automatic : .detailOnly
-                            }
-                        } label: {
-                            Image(systemName: "sidebar.left")
-                        }
-                    }
-                }
-        }
+        // Environment, not a stored property: pushed detail pages
+        // (CoderView, CoderTerminalView, …) reach the same binding through
+        // `sidebarToggleButton()`. It must live on the split view itself —
+        // a value set inside the detail column reaches the column's root
+        // page but does NOT propagate to pushed pages on macOS.
+        .environment(\.sidebarVisibility, $splitVisibility)
     }
 
     // MARK: - Shared sidebar pieces
@@ -286,4 +268,54 @@ struct MainView: View {
         .environment(RepoLaunchStore())
         .environment(RepositoryLocationStore())
         .environment(SSHHostStore())
+}
+
+// MARK: - Sidebar toggle
+
+/// Carries the split view's column-visibility binding down the detail
+/// stack, so any page — including pushed ones — can install the toggle.
+private struct SidebarVisibilityKey: EnvironmentKey {
+    static let defaultValue: Binding<NavigationSplitViewVisibility>? = nil
+}
+
+extension EnvironmentValues {
+    var sidebarVisibility: Binding<NavigationSplitViewVisibility>? {
+        get { self[SidebarVisibilityKey.self] }
+        set { self[SidebarVisibilityKey.self] = newValue }
+    }
+}
+
+/// The one fixed sidebar toggle. The system's variant changes icon and
+/// placement with platform and split state, so it is removed everywhere
+/// and replaced with this button. Toolbar items do not propagate to pushed
+/// pages in the detail stack, so every page that can appear there applies
+/// this modifier itself; pages outside a split view get a nil binding and
+/// render no button.
+private struct SidebarToggleButton: ViewModifier {
+    @Environment(\.sidebarVisibility) private var visibility
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar(removing: .sidebarToggle)
+            .toolbar {
+                if let visibility {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            withAnimation {
+                                visibility.wrappedValue =
+                                    visibility.wrappedValue == .detailOnly ? .automatic : .detailOnly
+                            }
+                        } label: {
+                            Image(systemName: "sidebar.left")
+                        }
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func sidebarToggleButton() -> some View {
+        modifier(SidebarToggleButton())
+    }
 }
