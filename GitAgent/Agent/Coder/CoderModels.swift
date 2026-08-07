@@ -36,8 +36,18 @@ enum CoderTool: String, Codable, CaseIterable, Identifiable {
 
   /// Prepended wherever the app probes for or launches a CLI/tmux: GUI apps
   /// and non-login SSH shells miss the Homebrew/npm/user bin directories.
-  static let pathExport =
-    "export PATH=\"$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\""
+  /// CLIs installed through a Node version manager (nvm, mise, asdf, …) live
+  /// in per-version bin directories that only the user's interactive shell
+  /// config adds to PATH, so the common shims/globs are folded in here.
+  /// `null_glob` keeps zsh from aborting the whole command when a glob
+  /// (e.g. a missing nvm install) matches nothing; sh/bash pass unmatched
+  /// globs through literally and the `[ -d ]` test skips them.
+  static let pathExport = """
+    export PATH="$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+    setopt null_glob 2>/dev/null || true
+    for d in "$HOME"/.nvm/versions/node/*/bin /opt/homebrew/opt/node*/bin "$HOME/.volta/bin" "$HOME/.bun/bin" "$HOME/.npm-global/bin" "$HOME/.local/share/mise/shims" "$HOME/.asdf/shims" "$HOME/.nodenv/shims"; do if [ -d "$d" ]; then PATH="$d:$PATH"; fi; done
+    unsetopt null_glob 2>/dev/null || true
+    """
 
   /// All Coder tmux sessions live on a dedicated tmux server socket, so
   /// server options (extended keys) and session names never collide with the
@@ -86,6 +96,27 @@ enum CoderTool: String, Codable, CaseIterable, Identifiable {
     ].joined(separator: "; ")
   }
 
+  /// Runs a pane command with the target user's shell environment. Coder
+  /// sessions are created from SSH exec channels, whose non-interactive
+  /// environment does not load the proxy, VPN, and other network settings
+  /// users commonly keep in their interactive shell configuration. zsh and
+  /// bash configurations are loaded explicitly with their startup output
+  /// suppressed, so an unrelated dotfile error does not pollute the CLI TUI.
+  /// `SHELL` is supplied by sshd from the target user's account; fall back to
+  /// POSIX sh for unusual servers that omit it.
+  static func loginInteractiveCommand(_ command: String) -> String {
+    let zshCommand = ". \"$HOME/.zshrc\" >/dev/null 2>&1 || true; exec \(command)"
+    let bashCommand = ". \"$HOME/.bashrc\" >/dev/null 2>&1 || true; exec \(command)"
+    return """
+      shell="${SHELL:-/bin/sh}"
+      case "${shell##*/}" in
+        zsh) exec "$shell" -lc \(shellQuote(zshCommand)) ;;
+        bash) exec "$shell" -lc \(shellQuote(bashCommand)) ;;
+        *) exec "$shell" -lic \(shellQuote(command)) ;;
+      esac
+      """
+  }
+
   /// Companion scripts installed next to the session for CLIs that support
   /// per-invocation completion hooks. Each script locates the session
   /// directory via `$0` and appends a timestamp to `turn-done`, which the
@@ -131,7 +162,7 @@ enum CoderTool: String, Codable, CaseIterable, Identifiable {
       "printf '%s\\n' '{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"bash '\"$dir\"'/hook-stop.sh\"}]}]}}' > \"$dir/settings.json\""
   }
 
-  private static func shellQuote(_ value: String) -> String {
+  static func shellQuote(_ value: String) -> String {
     "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
   }
 }

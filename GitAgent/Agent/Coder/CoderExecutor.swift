@@ -93,9 +93,11 @@ enum CoderExecutor {
     )
     // The pane command is quoted once for this shell; tmux passes it to the
     // pane's `sh -c`, which strips the second layer (prompt included).
-    let pane = record.tool.interactiveCommand(
-      sessionID: record.id,
-      prompt: record.initialPrompt
+    let pane = CoderTool.loginInteractiveCommand(
+      record.tool.interactiveCommand(
+        sessionID: record.id,
+        prompt: record.initialPrompt
+      )
     )
     commands.append(
       "\(CoderTool.tmux) new-session -d -s \"$session\" -c \"$workdir\" \(shellQuote(pane))"
