@@ -413,4 +413,3 @@ private struct ReadmeView: View {
         isLoading = false
     }
 }
-

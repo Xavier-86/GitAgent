@@ -14,6 +14,8 @@ struct CoderTerminalView: View {
   @Environment(AppSettings.self) private var settings
   @Environment(CoderStore.self) private var coder
   @Environment(SSHHostStore.self) private var hosts
+  @Environment(WorkspaceStore.self) private var workspace
+  @Environment(\.isWorkspacePage) private var isWorkspacePage
   @Environment(\.dismiss) private var dismiss
 
   let recordID: CoderSessionRecord.ID
@@ -59,7 +61,7 @@ struct CoderTerminalView: View {
         failedView(message)
       }
     }
-    .navigationTitle(record?.repositoryFullName ?? settings.tr(.coder))
+    .navigationTitle(isWorkspacePage ? "" : record?.repositoryFullName ?? settings.tr(.coder))
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -82,6 +84,9 @@ struct CoderTerminalView: View {
     .onAppear {
       // Viewing the session consumes its completion marker.
       coder.clearTurnFinished(recordID)
+      if isWorkspacePage {
+        workspace.updateSelectedTitle(record?.repositoryFullName ?? settings.tr(.coder))
+      }
       connect()
     }
     // The tmux session ended (killed or detached and the shell exited):
@@ -93,7 +98,17 @@ struct CoderTerminalView: View {
         // 80x24, so re-fit and re-report once the channel is up.
         bridge.refitAndReportSize()
       } else if state == .disconnected {
-        dismiss()
+        if isWorkspacePage {
+          // Switching to another Page tears down this view and disconnects
+          // its PTY. Do not let that lifecycle event overwrite the Page the
+          // user just selected. Only a terminal that ends while still active
+          // returns its own Page to the Coder list.
+          if workspace.isShowingCoderTerminal(recordID) {
+            workspace.goBack()
+          }
+        } else {
+          dismiss()
+        }
       }
     }
     .onDisappear {

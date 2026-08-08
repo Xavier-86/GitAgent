@@ -9,10 +9,11 @@ import Foundation
 enum L10n {
     enum Key {
         // Sidebar
-        case myRepos, starred, searchRepos, viewUser, chat, agent, logout, logoutConfirmMessage
+        case myRepos, starred, pages, newPage, searchRepos, viewUser, chat, agent, settings, logout, logoutConfirmMessage
         case uiFontSize, markdownFontSize, terminalFontSize
         // Profile
-        case profile, repositories, followers, following, contributions, contributionsLastYear
+        case profile, profileDescription, settingsDescription
+        case repositories, followers, following, contributions, contributionsLastYear
         case company, location, website, twitter, email, gists, joined
         // Kimi chat
         case kimiSection, kimiAPIKey, kimiBaseURL, kimiModel, provider, refreshModels, agentNeedKey
@@ -26,7 +27,7 @@ enum L10n {
         // In-app web viewer
         case done
         // SSH terminal
-        case terminal, localShell, noHosts, sshHostsHint, edit, connecting, disconnect, connectionFailed, back
+        case terminal, localShell, noHosts, sshHostsHint, addSSHHost, edit, connecting, disconnect, connectionFailed, back
         case sshName, sshCommand, sshCommandInvalid, sshPassword, sshHostEditorTitle, save
         case sshAuthentication, sshPasswordAuthentication, sshKeyAuthentication, sshPublicKey
         case copyPublicKey, copySSHSetupCommand, generateSSHKey, generateNewKey, sshPublicKeyHint
@@ -103,11 +104,16 @@ enum L10n {
     private static let strings: [Key: String] = [
         .myRepos: "My Repositories",
         .starred: "Starred",
+        .pages: "Pages",
+        .newPage: "New Page",
         .searchRepos: "Search Repositories",
         .viewUser: "View User",
         .chat: "Chat",
         .agent: "Agent",
+        .settings: "Settings",
         .profile: "Profile",
+        .profileDescription: "View your GitHub profile",
+        .settingsDescription: "Configure the app and AI providers",
         .repositories: "Repositories",
         .followers: "Followers",
         .following: "Following",
@@ -168,6 +174,7 @@ enum L10n {
         .localShell: "Local Shell",
         .noHosts: "No Saved Hosts",
         .sshHostsHint: "Add a Mac or Linux machine to open a remote shell over SSH",
+        .addSSHHost: "Add SSH Host",
         .edit: "Edit",
         .connecting: "Connecting…",
         .disconnect: "Disconnect",

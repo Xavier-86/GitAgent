@@ -9,6 +9,7 @@ import SwiftUI
 /// Reading font size and the AI chat provider configuration.
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.isWorkspacePage) private var isWorkspacePage
 
     /// Models fetched from `{baseURL}/models` — the Model field becomes a
     /// picker when the endpoint responds, and stays a text field otherwise.
@@ -97,8 +98,14 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .navigationTitle(settings.tr(.settings))
         #if os(macOS)
-        .frame(width: 360)
+        .frame(width: isWorkspacePage ? nil : 360)
+        .frame(
+            maxWidth: isWorkspacePage ? 720 : nil,
+            maxHeight: isWorkspacePage ? .infinity : nil,
+            alignment: .top
+        )
         .padding()
         #endif
         .task(id: settings.chatProvider) { await fetchModels() }

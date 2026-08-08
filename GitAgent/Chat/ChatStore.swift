@@ -54,6 +54,13 @@ struct ChatSession: Codable, Identifiable {
         self.createdAt = Date()
         self.messages = []
     }
+
+    init(id: UUID, title: String = "") {
+        self.id = id
+        self.title = title
+        createdAt = Date()
+        messages = []
+    }
 }
 
 /// Multi-session chat history, persisted as JSON in Application Support.
@@ -92,6 +99,36 @@ final class ChatStore {
 
     func select(_ id: ChatSession.ID) {
         currentID = id
+    }
+
+    func ensureSession(_ id: ChatSession.ID) {
+        guard !sessions.contains(where: { $0.id == id }) else { return }
+        sessions.insert(ChatSession(id: id), at: 0)
+        save()
+    }
+
+    func messages(for id: ChatSession.ID?) -> [ChatMessage] {
+        guard let id else { return current?.messages ?? [] }
+        return sessions.first { $0.id == id }?.messages ?? []
+    }
+
+    func append(_ message: ChatMessage, to id: ChatSession.ID?) {
+        guard let id else { append(message); return }
+        ensureSession(id)
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[index].messages.append(message)
+        if sessions[index].title.isEmpty, message.role == "user" {
+            sessions[index].title = String(message.content.prefix(40))
+        }
+        save()
+    }
+
+    func updateLast(in id: ChatSession.ID?, persist: Bool = true, _ transform: (inout ChatMessage) -> Void) {
+        guard let id else { updateLast(persist: persist, transform); return }
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == id }),
+              !sessions[sessionIndex].messages.isEmpty else { return }
+        transform(&sessions[sessionIndex].messages[sessions[sessionIndex].messages.count - 1])
+        if persist { save() }
     }
 
     func delete(_ id: ChatSession.ID) {

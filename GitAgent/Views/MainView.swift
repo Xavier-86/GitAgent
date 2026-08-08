@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum SidebarItem: CaseIterable, Identifiable, Hashable {
     case mine, starred, chat, agent, terminal
@@ -29,22 +32,33 @@ enum SidebarItem: CaseIterable, Identifiable, Hashable {
         case .terminal: return "terminal"
         }
     }
+
 }
 
 struct MainView: View {
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(AppSettings.self) private var settings
     @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
+    #if os(macOS)
+    @Environment(WorkspaceStore.self) private var workspace
+    #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
     @State private var selection: SidebarItem? = .mine
     @State private var navigationPath = NavigationPath()
+    #if os(macOS)
+    @State private var splitVisibility: NavigationSplitViewVisibility = .detailOnly
+    #else
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
+    #endif
     @State private var showSettings = false
     @State private var showLogoutConfirmation = false
     @State private var showProfile = false
+    #if os(macOS)
+    @State private var workspaceToolbarWidth: CGFloat = 660
+    #endif
 
     var body: some View {
         Group {
@@ -66,7 +80,54 @@ struct MainView: View {
             guard requestID != nil else { return }
             showTerminal()
         }
+        #if os(macOS)
+        .toolbar {
+            workspaceToolbar
+        }
+        .background {
+            NewPageTitlebarAccessory {
+                workspace.openNewPage()
+            }
+        }
+        #endif
     }
+
+    #if os(macOS)
+    @ToolbarContentBuilder
+    private var workspaceToolbar: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation {
+                        splitVisibility = splitVisibility == .detailOnly ? .automatic : .detailOnly
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .frame(width: 28, height: 28, alignment: .center)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 4)
+
+                Button {
+                    workspace.goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 28, height: 28, alignment: .center)
+                }
+                .buttonStyle(.plain)
+                .disabled(!workspace.canGoBack)
+                .help(settings.tr(.back))
+
+                WorkspaceTabBar()
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .layoutPriority(1)
+            }
+            .frame(height: 34, alignment: .center)
+            .frame(width: max(100, workspaceToolbarWidth - 180), alignment: .leading)
+        }
+
+    }
+    #endif
 
     // MARK: - iPhone (compact): single stack
 
@@ -152,7 +213,13 @@ struct MainView: View {
             .toolbar(removing: .sidebarToggle)
         } detail: {
             NavigationStack(path: $navigationPath) {
-                detailView(for: selection ?? .mine)
+                Group {
+                    #if os(macOS)
+                    WorkspacePageHost()
+                    #else
+                    detailView(for: selection ?? .mine)
+                    #endif
+                }
                     #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
                     #endif
@@ -163,6 +230,17 @@ struct MainView: View {
                             .sidebarToggleButton()
                     }
             }
+            #if os(macOS)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { workspaceToolbarWidth = geometry.size.width }
+                        .onChange(of: geometry.size.width) { _, width in
+                            workspaceToolbarWidth = width
+                        }
+                }
+            }
+            #endif
         }
         // Environment, not a stored property: pushed detail pages
         // (CoderView, CoderTerminalView, …) reach the same binding through
@@ -170,13 +248,29 @@ struct MainView: View {
         // a value set inside the detail column reaches the column's root
         // page but does NOT propagate to pushed pages on macOS.
         .environment(\.sidebarVisibility, $splitVisibility)
+        #if os(macOS)
+        .onChange(of: selection) { _, _ in
+            guard let selection else { return }
+            openSidebarPage(selection)
+        }
+        .onChange(of: workspace.selectedID) { _, _ in
+            // A repository may have been pushed above this root stack when a
+            // global tab is opened. Pop it before showing the newly selected
+            // page, otherwise the old detail view remains visually on top.
+            navigationPath = NavigationPath()
+        }
+        #endif
     }
 
     // MARK: - Shared sidebar pieces
 
     private var settingsButton: some View {
         Button {
+            #if os(macOS)
+            workspace.showSettings()
+            #else
             showSettings = true
+            #endif
         } label: {
             Image(systemName: "gearshape")
         }
@@ -187,7 +281,11 @@ struct MainView: View {
         if case .loggedIn(let user) = auth.state {
             Section {
                 Button {
+                    #if os(macOS)
+                    workspace.showProfile()
+                    #else
                     showProfile = true
+                    #endif
                 } label: {
                     HStack(spacing: 10) {
                         AvatarView(url: user.avatarURL, size: 36)
@@ -205,10 +303,22 @@ struct MainView: View {
                 // capsule over the sidebar material.
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
+
+                #if os(macOS)
+                Button {
+                    workspace.showSettings()
+                } label: {
+                    Label(settings.tr(.settings), systemImage: "gearshape")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                #endif
             }
+            #if os(iOS)
             .sheet(isPresented: $showProfile) {
                 UserProfileView(user: user)
             }
+            #endif
         }
     }
 
@@ -236,6 +346,20 @@ struct MainView: View {
         selection = .terminal
         #endif
     }
+
+    #if os(macOS)
+    /// Sidebar navigation updates the selected page and records its previous
+    /// destination in that page's browser-style back history.
+    private func openSidebarPage(_ item: SidebarItem) {
+        switch item {
+        case .mine: workspace.showMyRepositories()
+        case .starred: workspace.showStarred()
+        case .chat: workspace.showChat()
+        case .agent: workspace.showAgent()
+        case .terminal: workspace.showTerminal()
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func detailView(for item: SidebarItem) -> some View {
@@ -268,6 +392,7 @@ struct MainView: View {
         .environment(RepoLaunchStore())
         .environment(RepositoryLocationStore())
         .environment(SSHHostStore())
+        .environment(WorkspaceStore())
 }
 
 // MARK: - Sidebar toggle
@@ -278,10 +403,18 @@ private struct SidebarVisibilityKey: EnvironmentKey {
     static let defaultValue: Binding<NavigationSplitViewVisibility>? = nil
 }
 
+private struct WorkspacePageKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var sidebarVisibility: Binding<NavigationSplitViewVisibility>? {
         get { self[SidebarVisibilityKey.self] }
         set { self[SidebarVisibilityKey.self] = newValue }
+    }
+    var isWorkspacePage: Bool {
+        get { self[WorkspacePageKey.self] }
+        set { self[WorkspacePageKey.self] = newValue }
     }
 }
 
@@ -293,12 +426,24 @@ extension EnvironmentValues {
 /// render no button.
 private struct SidebarToggleButton: ViewModifier {
     @Environment(\.sidebarVisibility) private var visibility
+    @Environment(\.isWorkspacePage) private var isWorkspacePage
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        #if os(macOS)
+        if isWorkspacePage {
+            content
+                .toolbar(removing: .sidebarToggle)
+                .toolbar(removing: .title)
+        } else {
+            content
+                .toolbar(removing: .sidebarToggle)
+        }
+        #else
         content
             .toolbar(removing: .sidebarToggle)
             .toolbar {
-                if let visibility {
+                if let visibility, !isWorkspacePage {
                     ToolbarItem(placement: .navigation) {
                         Button {
                             withAnimation {
@@ -311,6 +456,7 @@ private struct SidebarToggleButton: ViewModifier {
                     }
                 }
             }
+        #endif
     }
 }
 
@@ -319,3 +465,92 @@ extension View {
         modifier(SidebarToggleButton())
     }
 }
+
+#if os(macOS)
+/// Installs the new-page button as a window-level trailing titlebar
+/// accessory. Unlike a SwiftUI toolbar item, its position is independent of
+/// NavigationSplitView's changing sidebar and detail toolbar regions.
+private struct NewPageTitlebarAccessory: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> TitlebarAccessoryInstallerView {
+        let view = TitlebarAccessoryInstallerView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ nsView: TitlebarAccessoryInstallerView, context: Context) {
+        nsView.action = action
+    }
+
+    static func dismantleNSView(_ nsView: TitlebarAccessoryInstallerView, coordinator: ()) {
+        nsView.uninstall()
+    }
+}
+
+private final class TitlebarAccessoryInstallerView: NSView {
+    var action: (() -> Void)?
+
+    private weak var installedWindow: NSWindow?
+    private var accessoryController: NSTitlebarAccessoryViewController?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window !== installedWindow else { return }
+        uninstall()
+        if let window {
+            install(in: window)
+        }
+    }
+
+    func uninstall() {
+        if let installedWindow,
+           let accessoryController,
+           let index = installedWindow.titlebarAccessoryViewControllers.firstIndex(
+               where: { $0 === accessoryController }
+           ) {
+            installedWindow.removeTitlebarAccessoryViewController(at: index)
+        }
+        accessoryController = nil
+        installedWindow = nil
+    }
+
+    private func install(in window: NSWindow) {
+        let button = NSButton()
+        button.image = NSImage(
+            systemSymbolName: "plus.circle.fill",
+            accessibilityDescription: L10n.resolveCurrent(.newPage)
+        )?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 21, weight: .semibold)
+        )
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.focusRingType = .none
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = L10n.resolveCurrent(.newPage)
+        button.target = self
+        button.action = #selector(openNewPage)
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 48, height: 28))
+        container.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            button.widthAnchor.constraint(equalToConstant: 28),
+            button.heightAnchor.constraint(equalToConstant: 28),
+        ])
+
+        let controller = NSTitlebarAccessoryViewController()
+        controller.layoutAttribute = .right
+        controller.view = container
+        accessoryController = controller
+        installedWindow = window
+        window.addTitlebarAccessoryViewController(controller)
+    }
+
+    @objc private func openNewPage() {
+        action?()
+    }
+}
+#endif

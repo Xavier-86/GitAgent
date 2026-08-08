@@ -5,10 +5,12 @@
 
 import SwiftUI
 
-/// Signed-in user's profile, shown as a sheet from the sidebar avatar row.
+/// Signed-in user's profile, embedded in a workspace page on macOS and shown
+/// modally on iOS.
 struct UserProfileView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(GitHubAuthManager.self) private var auth
+    @Environment(\.isWorkspacePage) private var isWorkspacePage
     @Environment(\.dismiss) private var dismiss
 
     let user: GitHubUser
@@ -17,8 +19,25 @@ struct UserProfileView: View {
     @State private var calendarFailed = false
 
     var body: some View {
-        NavigationStack {
-            List {
+        Group {
+            if isWorkspacePage {
+                profileContent
+            } else {
+                NavigationStack {
+                    profileContent
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button(settings.tr(.done)) { dismiss() }
+                            }
+                        }
+                }
+            }
+        }
+        .task { await loadCalendar() }
+    }
+
+    private var profileContent: some View {
+        List {
                 Section {
                     HStack(spacing: 16) {
                         AvatarView(url: user.avatarURL, size: 64)
@@ -91,21 +110,11 @@ struct UserProfileView: View {
                         Text(settings.tr(.contributions))
                     }
                 }
-            }
-            .navigationTitle(settings.tr(.profile))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(settings.tr(.done)) { dismiss() }
-                }
-            }
         }
-        #if os(macOS)
-        .frame(minWidth: 400, minHeight: 420)
+        .navigationTitle(settings.tr(.profile))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
         #endif
-        .task { await loadCalendar() }
     }
 
     private func loadCalendar() async {

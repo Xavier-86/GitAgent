@@ -54,14 +54,28 @@ struct RepoListView: View {
     let repos: [Repo]
 
     @State private var configuringRepo: Repo?
+    #if os(macOS)
+    @Environment(WorkspaceStore.self) private var workspace
+    #endif
 
     var body: some View {
         List(repos) { repo in
             HStack(spacing: 10) {
+                #if os(macOS)
+                Button {
+                    workspace.showRepository(repo)
+                } label: {
+                    RepoRow(repo: repo)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                #else
                 NavigationLink(value: repo) {
                     RepoRow(repo: repo)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                #endif
 
                 agentButton(for: repo)
             }

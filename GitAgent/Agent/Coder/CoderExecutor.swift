@@ -208,7 +208,12 @@ enum CoderExecutor {
     /// Runs a command through the user's login shell and reports its exit
     /// status instead of throwing, so probes can branch on it. `-i` pulls in
     /// .zshrc as well — many users only put their Homebrew/npm PATH edits
-    /// there, not in the login profile.
+    /// there, not in the login profile. stdin must NOT be inherited: an
+    /// interactive zsh opens its terminal during startup, and when the app
+    /// was launched from Xcode that stdin is the debug-console pty — once
+    /// Xcode detaches, opening the masterless pty blocks in the kernel
+    /// forever and every shell call hangs. Feeding /dev/null keeps `-i`
+    /// away from the dead tty.
     private static func runLocalShell(_ command: String) async -> (
       status: Int32, output: String
     ) {
@@ -217,6 +222,7 @@ enum CoderExecutor {
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-lic", command]
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         process.terminationHandler = { finished in

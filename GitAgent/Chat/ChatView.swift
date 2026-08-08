@@ -11,15 +11,19 @@ struct ChatView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(ChatStore.self) private var store
+    /// A workspace page owns its session, so switching browser-like pages
+    /// never changes the conversation shown in another page.
+    var sessionID: ChatSession.ID? = nil
 
     @State private var isStreaming = false
     @State private var streamTask: Task<Void, Never>?
     @State private var showSessions = false
 
-    private var messages: [ChatMessage] { store.current?.messages ?? [] }
+    private var messages: [ChatMessage] { store.messages(for: sessionID) }
 
     private var navigationTitle: String {
-        if let title = store.current?.title, !title.isEmpty { return title }
+        let session = sessionID.flatMap { id in store.sessions.first { $0.id == id } } ?? store.current
+        if let title = session?.title, !title.isEmpty { return title }
         return settings.tr(.chat)
     }
 
@@ -40,11 +44,13 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 16) {
-                    Button { showSessions = true } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                    }
-                    Button { store.newSession() } label: {
-                        Image(systemName: "square.and.pencil")
+                    if sessionID == nil {
+                        Button { showSessions = true } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                        }
+                        Button { store.newSession() } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
                     }
                 }
             }
@@ -52,6 +58,7 @@ struct ChatView: View {
         .sheet(isPresented: $showSessions) {
             SessionsView()
         }
+        .onAppear { if let sessionID { store.ensureSession(sessionID) } }
         .onDisappear { streamTask?.cancel() }
     }
 
@@ -148,11 +155,11 @@ struct ChatView: View {
             // Assemble the prompt: user text first, referenced content after.
             let prompt = await PromptBuilder.build(text: text, references: references,
                                                    client: auth.client)
-            store.ensureCurrent()
+            if sessionID == nil { store.ensureCurrent() } else { store.ensureSession(sessionID!) }
             store.append(ChatMessage(role: "user", content: text,
                                      references: references,
-                                     prompt: prompt == text ? nil : prompt))
-            store.append(ChatMessage(role: "assistant"))
+                                     prompt: prompt == text ? nil : prompt), to: sessionID)
+            store.append(ChatMessage(role: "assistant"), to: sessionID)
 
             let history = messages.dropLast().map {
                 ChatRequestMessage(role: $0.role, content: $0.prompt ?? $0.content)
@@ -169,7 +176,7 @@ struct ChatView: View {
                     let content = pendingContent, reasoning = pendingReasoning
                     pendingContent = ""
                     pendingReasoning = ""
-                    store.updateLast(persist: false) { message in
+                    store.updateLast(in: sessionID, persist: false) { message in
                         message.reasoning += reasoning
                         message.content += content
                     }
@@ -184,7 +191,7 @@ struct ChatView: View {
                 store.persist()
             } catch {
                 guard !Task.isCancelled else { return }
-                store.updateLast { message in
+                store.updateLast(in: sessionID) { message in
                     let prefix = message.content.isEmpty ? "" : "\n\n"
                     message.content +=
                         "\(prefix)[\(settings.tr(.agentError))] \(error.localizedDescription)"

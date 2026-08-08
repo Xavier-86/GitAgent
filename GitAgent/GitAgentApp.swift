@@ -17,6 +17,7 @@ struct GitAgentApp: App {
     @State private var repoLaunch = RepoLaunchStore()
     @State private var coder = CoderStore()
     @State private var terminalLauncher = TerminalLaunchCoordinator()
+    @State private var workspace = WorkspaceStore()
 
     var body: some Scene {
         WindowGroup {
@@ -29,6 +30,7 @@ struct GitAgentApp: App {
                 .environment(repoLaunch)
                 .environment(coder)
                 .environment(terminalLauncher)
+                .environment(workspace)
                 // App-wide default font driven by the UI Font Size setting —
                 // exact points (dynamicTypeSize is a no-op on macOS).
                 .font(.system(size: CGFloat(settings.uiFontSize)))
@@ -46,13 +48,14 @@ struct GitAgentApp: App {
                 }
                 #endif
         }
-
-        // macOS: GitAgent → Settings… (⌘,). The Settings scene is macOS-only.
         #if os(macOS)
-        Settings {
-            SettingsView()
-                .environment(settings)
-                .font(.system(size: CGFloat(settings.uiFontSize)))
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button(settings.tr(.settings)) {
+                    workspace.showSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
         #endif
     }

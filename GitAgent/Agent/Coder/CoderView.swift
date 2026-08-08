@@ -16,6 +16,8 @@ struct CoderView: View {
   @Environment(CoderStore.self) private var coder
   @Environment(RepositoryLocationStore.self) private var locations
   @Environment(SSHHostStore.self) private var hosts
+  @Environment(WorkspaceStore.self) private var workspace
+  @Environment(\.isWorkspacePage) private var isWorkspacePage
 
   @State private var selectedTool: CoderTool?
   @State private var selectedLocationID: RepositoryLocation.ID?
@@ -65,103 +67,15 @@ struct CoderView: View {
 
   var body: some View {
     List {
-      Section(settings.tr(.coderNewSession)) {
-        HStack {
-          Text(settings.tr(.coderTool))
-            .foregroundStyle(.secondary)
-            .frame(width: Self.formLabelWidth, alignment: .leading)
-          Picker(settings.tr(.coderTool), selection: Binding(
-            get: { tool },
-            set: { selectedTool = $0 }
-          )) {
-            ForEach(CoderTool.allCases) { tool in
-              Text(tool.displayName).tag(tool)
-            }
-          }
-          .labelsHidden()
-          .pickerStyle(.menu)
-          Spacer()
-        }
-
-        if connectedLocations.isEmpty {
-          Text(settings.tr(.coderNoLocations))
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        } else {
-          HStack {
-            Text(settings.tr(.coderWorkingCopy))
-              .foregroundStyle(.secondary)
-              .frame(width: Self.formLabelWidth, alignment: .leading)
-            Picker(settings.tr(.coderWorkingCopy), selection: $selectedLocationID) {
-              Text(settings.tr(.coderSelectLocation))
-                .tag(Optional<RepositoryLocation.ID>.none)
-              ForEach(locationGroups, id: \.title) { group in
-                Section(group.title) {
-                  ForEach(group.locations) { location in
-                    locationLabel(location)
-                      .tag(Optional(location.id))
-                  }
-                }
-              }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            Spacer()
-          }
-        }
-
-        HStack(alignment: .bottom) {
-          TextField(
-            "",
-            text: $initialPrompt,
-            prompt: Text(settings.tr(.coderInitialPromptHint)),
-            axis: .vertical
-          )
-          .lineLimit(1...4)
-          .textFieldStyle(.roundedBorder)
-          #if os(iOS)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-          #endif
-
-          Button(settings.tr(.coderStartSession)) { startSession() }
-            .buttonStyle(.borderedProminent)
-            .disabled(selectedLocation == nil)
-        }
-      }
-
-      Section(settings.tr(.coderSessions)) {
-        if coder.records.isEmpty {
-          Text(settings.tr(.coderNoSessions))
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(coder.records) { record in
-            NavigationLink {
-              CoderTerminalView(recordID: record.id)
-            } label: {
-              CoderSessionRow(record: record, runtime: coder.runtime(record.id))
-            }
-            .contextMenu {
-              Button(role: .destructive) {
-                coder.kill(record: record, hosts: hosts)
-              } label: {
-                Label(settings.tr(.coderKillSession), systemImage: "stop.circle")
-              }
-              .disabled(!coder.runtime(record.id).alive)
-              Button(role: .destructive) {
-                coder.delete(record: record, hosts: hosts)
-              } label: {
-                Label(settings.tr(.delete), systemImage: "trash")
-              }
-            }
-          }
-        }
-      }
+      newSessionSection
+      sessionsSection
     }
     .macTransparentScrollBackground()
     .sidebarToggleButton()
     .navigationTitle(settings.tr(.coder))
+    .onAppear {
+      if isWorkspacePage { workspace.updateSelectedTitle(settings.tr(.coder)) }
+    }
     .alert(
       settings.tr(.coderCreateFailed),
       isPresented: Binding(
@@ -172,6 +86,123 @@ struct CoderView: View {
       Button(settings.tr(.done)) { coder.creationError = nil }
     } message: {
       Text(coder.creationError ?? "")
+    }
+  }
+
+  private var newSessionSection: some View {
+    Section(settings.tr(.coderNewSession)) {
+      HStack {
+        Text(settings.tr(.coderTool))
+          .foregroundStyle(.secondary)
+          .frame(width: Self.formLabelWidth, alignment: .leading)
+        Picker(settings.tr(.coderTool), selection: Binding(
+          get: { tool },
+          set: { selectedTool = $0 }
+        )) {
+          ForEach(CoderTool.allCases) { tool in
+            Text(tool.displayName).tag(tool)
+          }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        Spacer()
+      }
+
+      if connectedLocations.isEmpty {
+        Text(settings.tr(.coderNoLocations))
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      } else {
+        workingCopyPicker
+      }
+
+      HStack(alignment: .bottom) {
+        TextField(
+          "",
+          text: $initialPrompt,
+          prompt: Text(settings.tr(.coderInitialPromptHint)),
+          axis: .vertical
+        )
+        .lineLimit(1...4)
+        .textFieldStyle(.roundedBorder)
+        #if os(iOS)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+        #endif
+
+        Button(settings.tr(.coderStartSession)) { startSession() }
+          .buttonStyle(.borderedProminent)
+          .disabled(selectedLocation == nil)
+      }
+    }
+  }
+
+  private var workingCopyPicker: some View {
+    HStack {
+      Text(settings.tr(.coderWorkingCopy))
+        .foregroundStyle(.secondary)
+        .frame(width: Self.formLabelWidth, alignment: .leading)
+      Picker(settings.tr(.coderWorkingCopy), selection: $selectedLocationID) {
+        Text(settings.tr(.coderSelectLocation))
+          .tag(Optional<RepositoryLocation.ID>.none)
+        ForEach(locationGroups, id: \.title) { group in
+          Section(group.title) {
+            ForEach(group.locations) { location in
+              locationLabel(location)
+                .tag(Optional(location.id))
+            }
+          }
+        }
+      }
+      .labelsHidden()
+      .pickerStyle(.menu)
+      Spacer()
+    }
+  }
+
+  private var sessionsSection: some View {
+    Section(settings.tr(.coderSessions)) {
+      if coder.records.isEmpty {
+        Text(settings.tr(.coderNoSessions))
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(coder.records) { record in
+          sessionEntry(record)
+        }
+      }
+    }
+  }
+
+  private func sessionEntry(_ record: CoderSessionRecord) -> some View {
+    Group {
+      if isWorkspacePage {
+        Button {
+          workspace.showCoderTerminal(record)
+        } label: {
+          CoderSessionRow(record: record, runtime: coder.runtime(record.id))
+        }
+        .buttonStyle(.plain)
+      } else {
+        NavigationLink {
+          CoderTerminalView(recordID: record.id)
+        } label: {
+          CoderSessionRow(record: record, runtime: coder.runtime(record.id))
+        }
+      }
+    }
+    .contextMenu {
+      Button(role: .destructive) {
+        coder.kill(record: record, hosts: hosts)
+      } label: {
+        Label(settings.tr(.coderKillSession), systemImage: "stop.circle")
+      }
+      .disabled(!coder.runtime(record.id).alive)
+      Button(role: .destructive) {
+        coder.delete(record: record, hosts: hosts)
+      } label: {
+        Label(settings.tr(.delete), systemImage: "trash")
+      }
     }
   }
 

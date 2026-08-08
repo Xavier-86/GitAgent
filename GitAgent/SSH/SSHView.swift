@@ -16,6 +16,7 @@ struct SSHView: View {
     @Environment(SSHHostStore.self) private var store
     @Environment(AppSettings.self) private var settings
     @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
+    @Environment(\.isWorkspacePage) private var isWorkspacePage
 
     @State private var session = SSHTerminalSession()
     #if os(macOS)
@@ -86,6 +87,11 @@ struct SSHView: View {
             List {
                 localTerminalRow
                 sshHostRows
+                Button {
+                    editingHost = SSHHostConfig()
+                } label: {
+                    Label(settings.tr(.addSSHHost), systemImage: "plus")
+                }
             }
             #else
             if store.hosts.isEmpty {
@@ -103,11 +109,13 @@ struct SSHView: View {
         }
         .macTransparentScrollBackground()
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    editingHost = SSHHostConfig()
-                } label: {
-                    Image(systemName: "plus")
+            if !isWorkspacePage {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        editingHost = SSHHostConfig()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
         }
@@ -234,10 +242,20 @@ struct SSHView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            if !isWorkspacePage {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(settings.tr(.disconnect), role: .destructive) {
+                        disconnectActive()
+                    }
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isWorkspacePage {
                 Button(settings.tr(.disconnect), role: .destructive) {
                     disconnectActive()
                 }
+                .padding(12)
             }
         }
         .fontSizeShortcuts(9...24,
