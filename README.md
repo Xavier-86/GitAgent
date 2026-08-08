@@ -6,7 +6,7 @@
 
 > [中文版](README.zh.md)
 
-**A GitHub client with AI chat and built-in terminals — native on iPhone, iPad, and Mac.**
+**A GitHub client with AI chat and built-in terminals — native on iPhone and Mac.**
 
 GitAgent is growing into a git-oriented AI agent that operates repositories across your devices. Today it already lets you browse GitHub, chat with LLMs about your code, open local and SSH terminals, link repositories to real working trees, and deploy repositories with a single form.
 
@@ -14,13 +14,15 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
 
 **Browse your repositories** — sign in with GitHub OAuth Device Flow (token in the system Keychain); your own, private, and starred repositories, plus a profile view with the contribution graph.
 
+**Work in browser-style pages** — start from a compact launcher, keep several tasks open at once, and switch without losing each page's navigation state; macOS uses toolbar tabs, while iPhone has a Safari-style page overview with live previews.
+
 **Read and explore code** — READMEs and files with full Markdown rendering (math, syntax highlighting, anchor jumps); images (PNG/JPEG/GIF/WebP/…) and PDFs open in built-in viewers; links to files, folders, and repositories all open inside the app.
 
 **Chat with AI about your code** — Kimi Code, Moonshot AI, OpenAI, DeepSeek, Anthropic, or any OpenAI-compatible endpoint, with models fetched automatically; type `@` to reference a repository, then `/` to attach files or folders; streaming Markdown answers, sessions persist locally, API keys stay in the Keychain.
 
 **Terminal — local and SSH** — a native local shell on macOS that behaves like Terminal.app (dotfiles, Homebrew, conda, all of it); add SSH hosts by pasting an `ssh` command line, with password or app-generated Ed25519 key and jump-host support; the same xterm.js terminal on every platform, credentials in the Keychain.
 
-**Link repositories to working trees** — connect a GitHub repository to a folder on this Mac or a path on an SSH host, with automatic verification; opening a connected location drops you into a terminal, right at the repository.
+**Link repositories to working trees** — connect a GitHub repository to a folder on this Mac or a path on an SSH host, with automatic verification; browse a connected working tree inside the app or open a terminal directly at the repository.
 
 **Deploy with RepoLaunch** — clone any git URL to this Mac or an SSH host through a visible staged workflow (preflight → checkout → setup/build/test → verify); never overwrites local changes; a successful deploy opens a terminal at the new working tree. Inspired by Microsoft's [RepoLaunch](https://github.com/microsoft/RepoLaunch).
 
@@ -30,7 +32,13 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
 
 ### macOS
 
-*After sign-in you land on your repositories — own, private, and starred, with a terminal-status dot on each row.*
+*The app starts on New Page with the sidebar collapsed. Open destinations in separate tabs and switch between them without replacing the current page.*
+
+<p>
+  <img src="assets/mac/pages.png" width="700" alt="macOS — New Page and page tabs">
+</p>
+
+*Open Repositories to browse your own, private, and starred repositories, with a terminal-status dot on each row.*
 
 <p>
   <img src="assets/mac/homepage.png" width="560" alt="macOS — repository list">
@@ -87,21 +95,33 @@ GitAgent is growing into a git-oriented AI agent that operates repositories acro
 
 ### iOS
 
-*The same app on iPhone: home with your profile, and the repository list.*
+*GitAgent starts on a compact New Page launcher. The bottom bar keeps Back on the left, the menu in the center, and New Page plus the page overview on the right.*
 
 <p>
-  <img src="assets/ios/homepage.png" width="200" alt="iOS — home screen">
-  <img src="assets/ios/repos.png" width="200" alt="iOS — repository list">
+  <img src="assets/ios/homepage.png" width="220" alt="iOS — New Page launcher">
 </p>
 
-*README rendering and the file browser, identical to the Mac.*
+*The Safari-style Pages overview shows real previews of open work: switch, close, or create a page without discarding the others.*
 
 <p>
+  <img src="assets/ios/pages.png" width="400" alt="iOS — Pages overview with live previews">
+</p>
+
+*Browse GitHub repositories, render their READMEs, and move through the file tree entirely inside the app.*
+
+<p>
+  <img src="assets/ios/repos.png" width="200" alt="iOS — repository list">
   <img src="assets/ios/read.png" width="200" alt="iOS — README rendering">
   <img src="assets/ios/files.png" width="200" alt="iOS — file browser">
 </p>
 
-*Terminal hosts — including multi-hop routes ("Via 5090" reaches the Mac through a jump host).*
+*A repository linked to an SSH working tree can also be browsed directly on iPhone, including Markdown links and file previews.*
+
+<p>
+  <img src="assets/ios/local.png" width="400" alt="iOS — README from a connected SSH working tree">
+</p>
+
+*Terminal hosts include direct and multi-hop routes; opening a connected location starts the shell in that repository.*
 
 <p>
   <img src="assets/ios/terminal.png" width="200" alt="iOS — terminal hosts">

@@ -4,17 +4,27 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import UserNotifications
+#endif
 
-/// App settings (macOS: ⌘, window; iOS: gear button in the sidebar).
-/// Reading font size and the AI chat provider configuration.
+/// App settings, embedded in a workspace page or presented by legacy
+/// non-workspace navigation. Reads font-size and AI-provider configuration.
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.isWorkspacePage) private var isWorkspacePage
+    @Environment(\.openURL) private var openURL
+    #if os(macOS)
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
 
     /// Models fetched from `{baseURL}/models` — the Model field becomes a
     /// picker when the endpoint responds, and stays a text field otherwise.
     @State private var availableModels: [String] = []
     @State private var isLoadingModels = false
+    #if os(macOS)
+    @State private var notificationAlertStyle: UNAlertStyle?
+    #endif
 
     var body: some View {
         Form {
@@ -41,6 +51,42 @@ struct SettingsView: View {
                     Text("\(settings.terminalFontSize)")
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section(settings.tr(.coder)) {
+                Toggle(
+                    settings.tr(.coderCompletionNotifications),
+                    isOn: Binding(
+                        get: { settings.coderCompletionNotifications },
+                        set: {
+                            settings.coderCompletionNotifications = $0
+                            if $0 { LocalNotifier.requestAuthorizationIfNeeded() }
+                        }
+                    )
+                )
+                Button(settings.tr(.testNotification)) {
+                    LocalNotifier.post(
+                        title: "GitAgent",
+                        body: settings.tr(.testNotificationBody)
+                    )
+                }
+                .disabled(!settings.coderCompletionNotifications)
+                #if os(macOS)
+                Button(settings.tr(.openNotificationSettings)) {
+                    if let url = URL(
+                        string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+                    ) {
+                        openURL(url)
+                    }
+                }
+                if let notificationAlertStyle {
+                    Text(settings.tr(notificationStyleKey(notificationAlertStyle)))
+                        .font(.caption)
+                        .foregroundStyle(
+                            notificationAlertStyle == .alert ? Color.secondary : Color.orange
+                        )
+                }
+                #endif
             }
 
             Section(settings.tr(.kimiSection)) {
@@ -109,7 +155,28 @@ struct SettingsView: View {
         .padding()
         #endif
         .task(id: settings.chatProvider) { await fetchModels() }
+        #if os(macOS)
+        .task { refreshNotificationAlertStyle() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshNotificationAlertStyle() }
+        }
+        #endif
     }
+
+    #if os(macOS)
+    private func refreshNotificationAlertStyle() {
+        LocalNotifier.notificationAlertStyle { notificationAlertStyle = $0 }
+    }
+
+    private func notificationStyleKey(_ style: UNAlertStyle) -> L10n.Key {
+        switch style {
+        case .alert: return .persistentNotificationActive
+        case .banner: return .persistentNotificationHint
+        case .none: return .notificationAlertsDisabled
+        @unknown default: return .persistentNotificationHint
+        }
+    }
+    #endif
 
     /// Fetched models, plus the currently configured one if the endpoint
     /// didn't list it (so the picker never loses the selection).

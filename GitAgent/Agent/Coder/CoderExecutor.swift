@@ -42,7 +42,11 @@ enum CoderExecutor {
         _ = try await runRemote(connection, sessionScript(record: record))
         await connection.close()
       } catch {
-        await connection.close()
+        if SSHConnection.isTransientFailure(error) {
+          await connection.invalidate()
+        } else {
+          await connection.close()
+        }
         throw error
       }
       return
@@ -85,6 +89,9 @@ enum CoderExecutor {
       let encoded = Data(file.content.utf8).base64EncodedString()
       commands.append("printf '%s' '\(encoded)' | base64 -d > \"$dir/\(file.name)\"")
     }
+    if record.tool != .kimi {
+      commands.append(": > \"$dir/completion-hook-enabled\"")
+    }
     if let settingsCommand = record.tool.claudeSettingsCommand {
       commands.append(settingsCommand)
     }
@@ -113,9 +120,9 @@ enum CoderExecutor {
 
   // MARK: - Probe
 
-  /// One command returning the session's liveness, last pane-output
-  /// timestamp, and CLI-hook completion count. Throws on transport failure;
-  /// the caller keeps the previous state and retries on the next cycle.
+  /// One command returning the session's liveness, pane activity/signature,
+  /// and CLI-hook completion count. Throws on transport failure; the caller
+  /// keeps the previous state and retries on the next cycle.
   static func probe(record: CoderSessionRecord, route: SSHConnectionRoute?) async throws
     -> CoderProbe
   {
@@ -126,7 +133,11 @@ enum CoderExecutor {
         output = try await runRemote(connection, probeCommand(recordID: record.id))
         await connection.close()
       } catch {
-        await connection.close()
+        if SSHConnection.isTransientFailure(error) {
+          await connection.invalidate()
+        } else {
+          await connection.close()
+        }
         throw error
       }
     } else {
@@ -147,15 +158,20 @@ enum CoderExecutor {
     if \(CoderTool.tmux) has-session -t "$session" 2>/dev/null; then printf 'alive\\t1\\n'; else printf 'alive\\t0\\n'; fi
     activity=$(\(CoderTool.tmux) display-message -p -t "$session" '#{window_activity}' 2>/dev/null)
     printf 'activity\\t%s\\n' "${activity:-0}"
+    signature=$(\(CoderTool.tmux) capture-pane -p -t "$session" -S -200 2>/dev/null | cksum | awk '{print $1}')
+    printf 'signature\\t%s\\n' "${signature:-0}"
     if [ -f "$dir/turn-done" ]; then count=$(wc -l < "$dir/turn-done" | tr -d ' '); else count=0; fi
     printf 'done\\t%s\\n' "$count"
+    if [ -f "$dir/completion-hook-enabled" ]; then printf 'hook\\t1\\n'; else printf 'hook\\t0\\n'; fi
     """
   }
 
   private static func parseProbe(_ raw: String) -> CoderProbe {
     var alive = false
     var activity = 0
+    var outputSignature = 0
     var done = 0
+    var completionHookEnabled = false
     for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
       let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
       guard let key = fields.first, fields.count > 1 else { continue }
@@ -163,11 +179,96 @@ enum CoderExecutor {
       switch key {
       case "alive": alive = value == "1"
       case "activity": activity = Int(value) ?? 0
+      case "signature": outputSignature = Int(value) ?? 0
       case "done": done = Int(value) ?? 0
+      case "hook": completionHookEnabled = value == "1"
       default: continue
       }
     }
-    return CoderProbe(alive: alive, activity: activity, done: done)
+    return CoderProbe(
+      alive: alive,
+      activity: activity,
+      outputSignature: outputSignature,
+      done: done,
+      completionHookEnabled: completionHookEnabled
+    )
+  }
+
+  // MARK: - Completion watch
+
+  enum CompletionWaitResult {
+    case completed(Int)
+    case timedOut
+    case sessionEnded
+    case hookUnavailable
+  }
+
+  /// Holds one lightweight channel open and watches only the hook counter.
+  /// The regular probe remains responsible for pane state and liveness.
+  static func waitForCompletion(
+    record: CoderSessionRecord,
+    afterDone baseline: Int,
+    route: SSHConnectionRoute?
+  ) async throws -> CompletionWaitResult {
+    let output: String
+    let command = completionWaitCommand(recordID: record.id, afterDone: baseline)
+    if let route {
+      let connection = try await SSHConnection.connect(route: route)
+      do {
+        output = try await runRemote(connection, command)
+        await connection.close()
+      } catch {
+        if SSHConnection.isTransientFailure(error) {
+          await connection.invalidate()
+        } else {
+          await connection.close()
+        }
+        throw error
+      }
+    } else {
+      #if os(macOS)
+        output = await runLocalShell(command).output
+      #else
+        throw CoderError.localUnavailable
+      #endif
+    }
+    return parseCompletionWait(output)
+  }
+
+  private static func completionWaitCommand(recordID: UUID, afterDone baseline: Int) -> String {
+    """
+    \(CoderTool.pathExport)
+    dir="\(sessionDirectory(for: recordID))"
+    session='\(tmuxSession(for: recordID))'
+    baseline='\(max(0, baseline))'
+    if [ ! -f "$dir/completion-hook-enabled" ]; then printf 'unavailable\\t0\\n'; exit 0; fi
+    attempt=0
+    while [ "$attempt" -lt 120 ]; do
+      if ! \(CoderTool.tmux) has-session -t "$session" 2>/dev/null; then printf 'ended\\t0\\n'; exit 0; fi
+      if [ -f "$dir/turn-done" ]; then count=$(wc -l < "$dir/turn-done" | tr -d ' '); else count=0; fi
+      if [ "$count" -gt "$baseline" ]; then printf 'done\\t%s\\n' "$count"; exit 0; fi
+      attempt=$((attempt + 1))
+      sleep 0.25
+    done
+    printf 'timeout\\t0\\n'
+    """
+  }
+
+  private static func parseCompletionWait(_ raw: String) -> CompletionWaitResult {
+    for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
+      let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+      guard let key = fields.first else { continue }
+      switch key {
+      case "done":
+        let value = fields.count > 1 ? Int(fields[1].trimmingCharacters(in: .whitespaces)) : nil
+        if let value { return .completed(value) }
+      case "ended": return .sessionEnded
+      case "unavailable": return .hookUnavailable
+      case "timeout": return .timedOut
+      default: continue
+      }
+    }
+    return .timedOut
   }
 
   // MARK: - Kill

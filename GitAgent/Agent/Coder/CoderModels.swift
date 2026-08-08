@@ -82,9 +82,7 @@ enum CoderTool: String, Codable, CaseIterable, Identifiable {
     let cli: String
     switch self {
     case .kimi:
-      // Kimi has no per-invocation hooks; completion is approximated from
-      // tmux output activity instead.
-      cli = "kimi --yolo\(promptArgument)"
+      cli = "bash \"$dir/kimi-launch.sh\"\(promptArgument)"
     case .claude:
       cli =
         "claude --dangerously-skip-permissions --settings \"$dir/settings.json\"\(promptArgument)"
@@ -132,7 +130,61 @@ enum CoderTool: String, Codable, CaseIterable, Identifiable {
   func hookFiles() -> [(name: String, content: String)] {
     switch self {
     case .kimi:
-      return []
+      return [
+        (
+          "hook-stop.sh",
+          """
+          #!/bin/bash
+          dir="$(cd "$(dirname "$0")" && pwd)"
+          cat > "$dir/hook-stop.json"
+          date +%s >> "$dir/turn-done"
+          """
+        ),
+        (
+          "kimi-launch.sh",
+          """
+          #!/bin/bash
+          dir="$(cd "$(dirname "$0")" && pwd)"
+          source_home="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+          kimi_home="$dir/kimi-home"
+          config="$kimi_home/config.toml"
+
+          mkdir -p "$kimi_home"
+          chmod 700 "$kimi_home"
+          rm -f "$dir/completion-hook-enabled" "$config"
+          if [ -f "$source_home/config.toml" ]; then
+            cp "$source_home/config.toml" "$config"
+          else
+            : > "$config"
+          fi
+          chmod 600 "$config"
+
+          for name in tui.toml AGENTS.md mcp.json credentials skills plugins sessions session_index.jsonl bin logs updates user-history; do
+            source="$source_home/$name"
+            target="$kimi_home/$name"
+            if { [ -e "$source" ] || [ -L "$source" ]; } && ! { [ -e "$target" ] || [ -L "$target" ]; }; then
+              ln -s "$source" "$target" 2>/dev/null || true
+            fi
+          done
+
+          {
+            printf '\n[[hooks]]\n'
+            printf 'event = "Stop"\n'
+            printf 'command = "bash \\"$KIMI_CODE_HOME/../hook-stop.sh\\""\n'
+            printf 'timeout = 5\n'
+          } >> "$config"
+
+          if kimi doctor config "$config" >/dev/null 2>&1; then
+            : > "$dir/completion-hook-enabled"
+            export KIMI_CODE_HOME="$kimi_home"
+          else
+            export KIMI_CODE_HOME="$source_home"
+          fi
+
+          exec kimi --yolo "$@"
+          """
+        ),
+      ]
     case .claude:
       return [
         (
@@ -192,8 +244,14 @@ struct CoderProbe {
   let alive: Bool
   /// tmux `#{window_activity}`: timestamp of the last pane output.
   let activity: Int
+  /// Checksum of recent pane text. Some tmux versions do not advance
+  /// `window_activity` for output in the currently active window.
+  let outputSignature: Int
   /// Number of completion timestamps appended by the CLI hooks.
   let done: Int
+  /// Whether this session successfully installed an exact completion hook.
+  /// Kimi uses this to disable its legacy idle-based fallback.
+  let completionHookEnabled: Bool
 }
 
 enum CoderError: LocalizedError {

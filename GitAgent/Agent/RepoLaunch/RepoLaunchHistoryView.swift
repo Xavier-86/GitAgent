@@ -84,7 +84,9 @@ struct RepoLaunchRecordRow: View {
       }
       Spacer()
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 4)
+    .contentShape(Rectangle())
   }
 
   private var statusIcon: String {

@@ -35,7 +35,7 @@ struct RepoLaunchView: View {
   }
 }
 
-enum RepoLaunchFormPresentation {
+enum RepoLaunchFormPresentation: Equatable {
   case sheet
   case navigation
 }
@@ -140,14 +140,6 @@ struct RepoLaunchForm: View {
       // Dismissing the form deliberately does NOT cancel the deployment:
       // remote runs are detached in tmux on the host and keep going in the
       // background; only the explicit Cancel button stops them.
-      .sheet(item: $browseContext) { context in
-        RemotePathPickerView(
-          route: context.route,
-          initialPath: remoteDestination.trimmingCharacters(in: .whitespacesAndNewlines)
-        ) { selected in
-          remoteDestination = selected
-        }
-      }
       .alert(
         settings.tr(.browse),
         isPresented: Binding(
@@ -166,7 +158,7 @@ struct RepoLaunchForm: View {
     switch presentation {
     case .sheet:
       NavigationStack {
-        deploymentForm
+        activeContent
       }
       #if os(macOS)
         .frame(
@@ -174,6 +166,22 @@ struct RepoLaunchForm: View {
           minHeight: 520, idealHeight: 620)
       #endif
     case .navigation:
+      activeContent
+    }
+  }
+
+  @ViewBuilder
+  private var activeContent: some View {
+    if let browseContext {
+      RemotePathPickerView(
+        route: browseContext.route,
+        initialPath: remoteDestination.trimmingCharacters(in: .whitespacesAndNewlines),
+        onBack: { self.browseContext = nil }
+      ) { selected in
+        remoteDestination = selected
+        self.browseContext = nil
+      }
+    } else {
       deploymentForm
     }
   }
@@ -283,7 +291,7 @@ struct RepoLaunchForm: View {
             deploymentTask?.cancel()
           }
         } else {
-          Button(settings.tr(.cancel)) { dismiss() }
+          Button(settings.tr(presentation == .navigation ? .back : .cancel)) { dismiss() }
         }
       }
       ToolbarItem(placement: .confirmationAction) {

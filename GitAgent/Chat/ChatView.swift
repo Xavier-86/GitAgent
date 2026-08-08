@@ -33,18 +33,24 @@ struct ChatView: View {
                 ContentUnavailableView(settings.tr(.agentNeedKey), systemImage: "key")
             } else if messages.isEmpty {
                 emptyGuide
-                ChatComposer(isStreaming: isStreaming, onSend: send, onStop: stop)
             } else {
                 messageList
-                ChatComposer(isStreaming: isStreaming, onSend: send, onStop: stop)
             }
+            #if os(macOS)
+            if settings.chatClient != nil { composer }
+            #endif
         }
+        #if os(iOS)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if settings.chatClient != nil { composer }
+        }
+        #endif
         .navigationTitle(navigationTitle)
         .fontSizeShortcuts(get: { settings.fontSize }, set: { settings.fontSize = $0 })
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 16) {
-                    if sessionID == nil {
+            if sessionID == nil {
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 16) {
                         Button { showSessions = true } label: {
                             Image(systemName: "clock.arrow.circlepath")
                         }
@@ -60,6 +66,12 @@ struct ChatView: View {
         }
         .onAppear { if let sessionID { store.ensureSession(sessionID) } }
         .onDisappear { streamTask?.cancel() }
+    }
+
+    private var composer: some View {
+        ChatComposer(isStreaming: isStreaming, onSend: send, onStop: stop)
+            .background(.bar)
+            .overlay(alignment: .top) { Divider() }
     }
 
     /// First-launch guide: explains the @ / reference syntax.

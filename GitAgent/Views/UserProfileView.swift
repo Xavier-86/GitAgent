@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// Signed-in user's profile, embedded in a workspace page on macOS and shown
-/// modally on iOS.
+/// Signed-in user's profile, embedded in a workspace page or shown modally by
+/// legacy non-workspace navigation.
 struct UserProfileView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(GitHubAuthManager.self) private var auth
@@ -17,6 +17,10 @@ struct UserProfileView: View {
 
     @State private var calendar: ContributionCalendar?
     @State private var calendarFailed = false
+
+    private var profileFont: Font {
+        .system(size: CGFloat(settings.uiFontSize))
+    }
 
     var body: some View {
         Group {
@@ -44,8 +48,12 @@ struct UserProfileView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(user.name ?? user.login)
-                                .font(.title2.bold())
+                                .font(.system(
+                                    size: CGFloat(settings.uiFontSize) + 6,
+                                    weight: .bold
+                                ))
                             Text("@\(user.login)")
+                                .font(profileFont)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -55,49 +63,51 @@ struct UserProfileView: View {
                 if let bio = user.bio, !bio.isEmpty {
                     Section {
                         Text(bio)
+                            .font(profileFont)
                     }
                 }
 
                 // Everything the API offers, shown when present.
                 Section {
                     if let company = user.company, !company.isEmpty {
-                        LabeledContent(settings.tr(.company), value: company)
+                        profileField(settings.tr(.company), value: company)
                     }
                     if let location = user.location, !location.isEmpty {
-                        LabeledContent(settings.tr(.location), value: location)
+                        profileField(settings.tr(.location), value: location)
                     }
                     if let blog = user.blog, !blog.isEmpty {
-                        LabeledContent(settings.tr(.website), value: blog)
-                            .textSelection(.enabled)
+                        profileField(settings.tr(.website), value: blog)
                     }
                     if let twitter = user.twitterUsername, !twitter.isEmpty {
-                        LabeledContent(settings.tr(.twitter), value: "@\(twitter)")
+                        profileField(settings.tr(.twitter), value: "@\(twitter)")
                     }
                     if let email = user.email, !email.isEmpty {
-                        LabeledContent(settings.tr(.email), value: email)
-                            .textSelection(.enabled)
+                        profileField(settings.tr(.email), value: email)
                     }
                     if let createdAt = user.createdAt {
-                        LabeledContent(settings.tr(.joined),
-                                       value: createdAt.formatted(date: .abbreviated, time: .omitted))
+                        profileField(
+                            settings.tr(.joined),
+                            value: createdAt.formatted(date: .abbreviated, time: .omitted)
+                        )
                     }
                 }
 
                 Section {
-                    LabeledContent(settings.tr(.repositories), value: "\(user.publicRepos)")
-                    LabeledContent(settings.tr(.gists), value: "\(user.publicGists)")
-                    LabeledContent(settings.tr(.followers), value: "\(user.followers)")
-                    LabeledContent(settings.tr(.following), value: "\(user.following)")
+                    profileField(settings.tr(.repositories), value: "\(user.publicRepos)")
+                    profileField(settings.tr(.gists), value: "\(user.publicGists)")
+                    profileField(settings.tr(.followers), value: "\(user.followers)")
+                    profileField(settings.tr(.following), value: "\(user.following)")
                 }
 
                 if let calendar {
                     Section {
                         ContributionGraphView(calendar: calendar)
                         Text("\(calendar.totalContributions) \(settings.tr(.contributionsLastYear))")
-                            .font(.caption)
+                            .font(profileFont)
                             .foregroundStyle(.secondary)
                     } header: {
                         Text(settings.tr(.contributions))
+                            .font(profileFont.weight(.semibold))
                     }
                 } else if !calendarFailed {
                     Section {
@@ -108,13 +118,28 @@ struct UserProfileView: View {
                         }
                     } header: {
                         Text(settings.tr(.contributions))
+                            .font(profileFont.weight(.semibold))
                     }
                 }
         }
+        .font(.system(size: CGFloat(settings.uiFontSize)))
         .navigationTitle(settings.tr(.profile))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+
+    private func profileField(_ label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 20) {
+            Text(label)
+                .font(profileFont)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(profileFont)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
     }
 
     private func loadCalendar() async {

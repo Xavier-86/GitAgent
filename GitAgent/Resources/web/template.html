@@ -60,6 +60,19 @@
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
+  // Route every non-anchor link through the native repository/browser layer.
+  // Preventing WebKit navigation here also avoids its file-URL sandbox check.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    if (window.webkit && webkit.messageHandlers && webkit.messageHandlers.openLink) {
+      e.preventDefault();
+      webkit.messageHandlers.openLink.postMessage(a.href);
+    }
+  });
+
   // Assigns GitHub-style slug ids to headings so #anchor links have a target.
   function addHeadingAnchors(container) {
     const slugCounts = {};
@@ -75,14 +88,15 @@
     });
   }
 
-  // GitHub-hosted images are loaded natively (with the auth token, so private
-  // repositories work too) and swapped in as data URLs by setImageData().
+  // Protected GitHub images and authorized local-repository images are loaded
+  // natively and swapped in as data URLs by setImageData().
   function collectProtectedImages() {
     if (!(window.webkit && webkit.messageHandlers && webkit.messageHandlers.loadImages)) return;
     const jobs = [];
     document.querySelectorAll('#content img').forEach((img, index) => {
       const src = img.getAttribute('src') || '';
-      if (/^https:\/\/([^/]*\.)?(github\.com|githubusercontent\.com)(\/|$)/.test(src)) {
+      if (/^(file:|gitagent-local:|gitagent-remote:)/.test(src) ||
+          /^https:\/\/([^/]*\.)?(github\.com|githubusercontent\.com)(\/|$)/.test(src)) {
         jobs.push({ index: index, url: src });
       }
     });

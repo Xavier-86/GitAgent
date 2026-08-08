@@ -15,6 +15,7 @@ final class AppSettings {
     static let kimiModelKey = "kimiModel"
     static let chatProviderKey = "chatProvider"
     static let coderToolKey = "coderTool"
+    static let coderCompletionNotificationsKey = "coderCompletionNotifications"
 
     /// Base font size (points) for rendered Markdown content.
     var fontSize: Int {
@@ -46,6 +47,16 @@ final class AppSettings {
     /// Default coding CLI for new Coder agent tasks.
     var coderTool: CoderTool {
         didSet { UserDefaults.standard.set(coderTool.rawValue, forKey: Self.coderToolKey) }
+    }
+
+    /// Whether Coder turn completion posts a system notification.
+    var coderCompletionNotifications: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                coderCompletionNotifications,
+                forKey: Self.coderCompletionNotificationsKey
+            )
+        }
     }
 
     /// API key for the selected provider, stored in the Keychain — never
@@ -81,6 +92,13 @@ final class AppSettings {
         chatProvider = ChatProvider(rawValue: storedProvider) ?? .kimiCode
         let storedCoderTool = UserDefaults.standard.string(forKey: Self.coderToolKey) ?? ""
         coderTool = CoderTool(rawValue: storedCoderTool) ?? .kimi
+        if UserDefaults.standard.object(forKey: Self.coderCompletionNotificationsKey) == nil {
+            coderCompletionNotifications = true
+        } else {
+            coderCompletionNotifications = UserDefaults.standard.bool(
+                forKey: Self.coderCompletionNotificationsKey
+            )
+        }
         kimiAPIKey = KeychainHelper.readKimiAPIKey() ?? ""
         kimiBaseURL = UserDefaults.standard.string(forKey: Self.kimiBaseURLKey)
             ?? ChatProvider.kimiCode.defaultBaseURL

@@ -82,7 +82,11 @@ enum RepositoryLocationVerifier {
             }
             return probe
         } catch {
-            await connection.close()
+            if SSHConnection.isTransientFailure(error) {
+                await connection.invalidate()
+            } else {
+                await connection.close()
+            }
             throw error
         }
     }

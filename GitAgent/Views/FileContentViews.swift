@@ -120,6 +120,8 @@ struct FileBrowserView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func makeRef(for item: RepoContent) -> RepoFileRef {

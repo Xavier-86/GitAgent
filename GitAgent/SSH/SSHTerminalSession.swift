@@ -80,13 +80,9 @@ final class SSHTerminalSession {
                     if let initialInput {
                         try await outbound.write(ByteBuffer(bytes: initialInput))
                     }
-                    do {
-                        for try await event in inbound {
-                            guard case .stdout(let buffer) = event else { continue }
-                            self.onOutput?(Data(buffer.readableBytesView))
-                        }
-                    } catch {
-                        // Channel closed mid-stream — treated as a disconnect below.
+                    for try await event in inbound {
+                        guard case .stdout(let buffer) = event else { continue }
+                        self.onOutput?(Data(buffer.readableBytesView))
                     }
                     self.writer = nil
                     if self.attemptID == attemptID, self.state == .connected {
@@ -110,7 +106,11 @@ final class SSHTerminalSession {
                 if let connection = self?.connection ?? pendingConnection {
                     self?.connection = nil
                     pendingConnection = nil
-                    await connection.close()
+                    if SSHConnection.isTransientFailure(error) {
+                        await connection.invalidate()
+                    } else {
+                        await connection.close()
+                    }
                 }
                 self?.state = .failed(error.localizedDescription)
             }

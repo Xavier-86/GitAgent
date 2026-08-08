@@ -9,7 +9,9 @@ import Foundation
 enum L10n {
     enum Key {
         // Sidebar
-        case myRepos, starred, pages, newPage, searchRepos, viewUser, chat, agent, settings, logout, logoutConfirmMessage
+        case myRepos, starred, pages, newPage, appTagline, searchRepos, viewUser, chat, agent, settings, logout, logoutConfirmMessage
+        case pageRepositoriesDescription, pageStarredDescription, pageChatDescription
+        case pageAgentDescription, pageTerminalDescription, localFilesAvailableOnMac
         case uiFontSize, markdownFontSize, terminalFontSize
         // Profile
         case profile, profileDescription, settingsDescription
@@ -39,9 +41,11 @@ enum L10n {
         case repositoryPathFooter, saveAndVerify, verify, verifying, connected, notConnected
         case computerUnavailable, sshPasswordMissing, repositoryPathMissing, notGitRepository
         case noGitHubRemote, repositoryRemoteUnreachable, invalidRepositoryProbe
-        case agentConfigured, agentNotConfigured, thisMac
+        case agentConfigured, agentNotConfigured, thisMac, viewLocalRepository, viewRemoteRepository
         case addSSHHostFirst, chooseFolder, localRepositoryPathFooter
         case localRepositoryAccessDenied, folderSelectionFailed
+        case remoteRepositoryUnavailable, repositoryPathOutsideRoot
+        case fileTooLargeToPreview, previewUnavailable
         // Remote path picker
         case browse, selectThisFolder, directoryListingFailed
         // RepoLaunch deployment
@@ -62,7 +66,9 @@ enum L10n {
         case coderNoLocations, coderNewSession, coderInitialPromptHint, coderStartSession
         case coderSessions, coderNoSessions, coderKillSession, coderTurnFinished
         case coderCreateFailed, coderToolUnavailable, coderLocalUnavailable
-        case coderMessageHint, coderSend, coderToggleComposer
+        case coderMessageHint, coderSend, coderToggleComposer, coderCompletionNotifications
+        case testNotification, testNotificationBody, openNotificationSettings, openCoderSession
+        case persistentNotificationHint, persistentNotificationActive, notificationAlertsDisabled
         // Errors
         case unauthorized, rateLimited, invalidResponse, clientIDMissing
         case authCodeExpired, accessDenied, authTimeout, unknownError
@@ -101,11 +107,22 @@ enum L10n {
         "Could not connect to \(host): \(reason)"
     }
 
+    static func closePage(title: String) -> String {
+        "Close \(title)"
+    }
+
     private static let strings: [Key: String] = [
         .myRepos: "My Repositories",
         .starred: "Starred",
         .pages: "Pages",
         .newPage: "New Page",
+        .appTagline: "A GitHub client with AI chat and built-in terminals.",
+        .pageRepositoriesDescription: "Browse your GitHub repositories",
+        .pageStarredDescription: "See repositories you have starred",
+        .pageChatDescription: "Start a focused AI conversation",
+        .pageAgentDescription: "Launch repository tools and coding sessions",
+        .pageTerminalDescription: "Connect to a local or SSH shell",
+        .localFilesAvailableOnMac: "Local files are available on Mac",
         .searchRepos: "Search Repositories",
         .viewUser: "View User",
         .chat: "Chat",
@@ -226,10 +243,16 @@ enum L10n {
         .agentConfigured: "Agent repository location connected",
         .agentNotConfigured: "Agent repository location not connected",
         .thisMac: "This Mac",
+        .viewLocalRepository: "View Local Repository",
+        .viewRemoteRepository: "View Remote Repository",
         .addSSHHostFirst: "Add an SSH host in Terminal before configuring a repository location.",
         .chooseFolder: "Choose…",
         .localRepositoryAccessDenied: "GitAgent can no longer access this folder. Delete this location and choose the folder again.",
         .folderSelectionFailed: "Could not access the selected folder",
+        .remoteRepositoryUnavailable: "Remote Repository Unavailable",
+        .repositoryPathOutsideRoot: "The requested path is outside this repository.",
+        .fileTooLargeToPreview: "This file is too large to preview.",
+        .previewUnavailable: "Preview Unavailable",
         .browse: "Browse…",
         .selectThisFolder: "Select This Folder",
         .directoryListingFailed: "Could not list the folders on this computer.",
@@ -293,6 +316,14 @@ enum L10n {
         .coderMessageHint: "Message the session…",
         .coderSend: "Send",
         .coderToggleComposer: "Toggle Message Bar",
+        .coderCompletionNotifications: "Completion Notifications",
+        .testNotification: "Test Notification",
+        .testNotificationBody: "GitAgent notifications are working.",
+        .openNotificationSettings: "Open System Notification Settings",
+        .openCoderSession: "Open Session",
+        .persistentNotificationHint: "System style: Temporary. Select Persistent in System Settings; Temporary notifications dismiss automatically.",
+        .persistentNotificationActive: "System style: Persistent. Notifications remain until you dismiss them.",
+        .notificationAlertsDisabled: "System alert style is disabled. Enable Desktop notifications in System Settings.",
         .unauthorized: "Session expired. Please sign in again.",
         .rateLimited: "Too many requests. GitHub rate limit reached, please try again later.",
         .invalidResponse: "The server returned data that could not be parsed.",

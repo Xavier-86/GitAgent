@@ -9,6 +9,14 @@ import SwiftUI
 
 @main
 struct GitAgentApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(GitAgentNotificationAppDelegate.self)
+    private var notificationAppDelegate
+    #else
+    @UIApplicationDelegateAdaptor(GitAgentNotificationAppDelegate.self)
+    private var notificationAppDelegate
+    #endif
+
     @State private var auth = GitHubAuthManager()
     @State private var settings = AppSettings()
     @State private var chatStore = ChatStore()
@@ -38,10 +46,24 @@ struct GitAgentApp: App {
                     // Re-attach to remote deployments that outlived the app.
                     repoLaunch.resumeInterruptedDeployments(hosts: sshHosts)
                     // Coder sessions are probed via SSH routes from the host store.
-                    coder.attach(hosts: sshHosts)
+                    coder.attach(hosts: sshHosts, settings: settings)
+                    LocalNotifier.installCoderSessionHandler { recordID in
+                        if let record = coder.record(recordID) {
+                            workspace.focusCoderTerminal(record)
+                        } else {
+                            workspace.openCoder()
+                        }
+                    }
+                    if settings.coderCompletionNotifications {
+                        LocalNotifier.requestAuthorizationIfNeeded()
+                    }
                 }
                 #if os(macOS)
                 .onAppear {
+                    // Closing the last macOS window does not necessarily quit
+                    // the app. Reopening it should still begin with one clean
+                    // New Page and the sidebar's detail-only initial state.
+                    workspace.resetToInitialPage()
                     // Activate at launch so the window comes to the front
                     // instead of staying behind the previously active app.
                     NSApplication.shared.activate(ignoringOtherApps: true)
@@ -52,7 +74,7 @@ struct GitAgentApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button(settings.tr(.settings)) {
-                    workspace.showSettings()
+                    workspace.openSettings()
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }

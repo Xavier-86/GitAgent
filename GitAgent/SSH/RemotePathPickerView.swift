@@ -7,8 +7,7 @@
 
 import SwiftUI
 
-/// Identifiable SSH route for presenting `RemotePathPickerView` as a sheet
-/// from a path-entry form.
+/// Identifiable SSH route for moving from a path-entry form into the browser.
 struct RemoteBrowseContext: Identifiable {
     let route: SSHConnectionRoute
 
@@ -17,11 +16,11 @@ struct RemoteBrowseContext: Identifiable {
 
 struct RemotePathPickerView: View {
     @Environment(AppSettings.self) private var settings
-    @Environment(\.dismiss) private var dismiss
 
     let route: SSHConnectionRoute
     /// Where browsing starts; an empty value starts at the home directory.
     let initialPath: String
+    let onBack: () -> Void
     let onSelect: (String) -> Void
 
     @State private var requestedPath = ""
@@ -31,60 +30,61 @@ struct RemotePathPickerView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView(settings.tr(.loading))
-                } else if let errorMessage {
-                    ContentUnavailableView {
-                        Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(errorMessage)
-                    } actions: {
-                        Button(settings.tr(.retry)) {
-                            Task { await load(path: requestedPath) }
+        Group {
+            if isLoading {
+                ProgressView(settings.tr(.loading))
+            } else if let errorMessage {
+                ContentUnavailableView {
+                    Label(settings.tr(.loadFailed), systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button(settings.tr(.retry)) {
+                        Task { await load(path: requestedPath) }
+                    }
+                }
+            } else {
+                List {
+                    if resolvedPath != "/" {
+                        Button {
+                            Task { await load(path: parentPath) }
+                        } label: {
+                            Label("..", systemImage: "arrow.up")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                     }
-                } else {
-                    List {
-                        if resolvedPath != "/" {
-                            Button {
-                                Task { await load(path: parentPath) }
-                            } label: {
-                                Label("..", systemImage: "arrow.up")
-                            }
-                        }
-                        ForEach(directories, id: \.self) { name in
-                            Button {
-                                Task { await load(path: childPath(name)) }
-                            } label: {
-                                Label(name, systemImage: "folder")
-                            }
+                    ForEach(directories, id: \.self) { name in
+                        Button {
+                            Task { await load(path: childPath(name)) }
+                        } label: {
+                            Label(name, systemImage: "folder")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                     }
-                    .overlay {
-                        if directories.isEmpty {
-                            Text(settings.tr(.emptyFolder))
-                                .foregroundStyle(.secondary)
-                        }
+                }
+                .overlay {
+                    if directories.isEmpty {
+                        Text(settings.tr(.emptyFolder))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            .navigationTitle(resolvedPath.isEmpty ? settings.tr(.browse) : resolvedPath)
-            #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(settings.tr(.cancel)) { dismiss() }
+        }
+        .navigationTitle(resolvedPath.isEmpty ? settings.tr(.browse) : resolvedPath)
+        #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(settings.tr(.back), action: onBack)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(settings.tr(.selectThisFolder)) {
+                    onSelect(resolvedPath)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(settings.tr(.selectThisFolder)) {
-                        onSelect(resolvedPath)
-                        dismiss()
-                    }
-                    .disabled(isLoading || errorMessage != nil || resolvedPath.isEmpty)
-                }
+                .disabled(isLoading || errorMessage != nil || resolvedPath.isEmpty)
             }
         }
         #if os(macOS)
@@ -111,10 +111,12 @@ struct RemotePathPickerView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let result = try await RemoteDirectoryBrowser.listDirectories(
-                route: route,
-                path: path
-            )
+            let result = try await SSHConnection.retryingTransientFailure {
+                try await RemoteDirectoryBrowser.listDirectories(
+                    route: route,
+                    path: path
+                )
+            }
             resolvedPath = result.path
             directories = result.directories
         } catch let error as RemoteDirectoryBrowser.BrowseError {

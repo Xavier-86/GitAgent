@@ -38,6 +38,13 @@ struct RepositoryLocation: Codable, Identifiable, Hashable {
         verificationVersion == Self.currentVerificationVersion
     }
 
+    /// UI status is the most recent completed verification result. An older
+    /// verification version still remains green while a background refresh
+    /// determines whether the location can be used with the current rules.
+    var lastConnectionWasSuccessful: Bool {
+        verification == .connected
+    }
+
     init(repository: Repo, hostID: UUID?, path: String, bookmarkData: Data? = nil) {
         id = UUID()
         repositoryID = repository.id
@@ -71,7 +78,7 @@ final class RepositoryLocationStore {
 
     func hasConnectedLocation(for repositoryID: Int) -> Bool {
         locations.contains {
-            $0.repositoryID == repositoryID && $0.isConnected
+            $0.repositoryID == repositoryID && $0.lastConnectionWasSuccessful
         }
     }
 
@@ -101,14 +108,6 @@ final class RepositoryLocationStore {
         return location.id
     }
     #endif
-
-    func markChecking(_ id: RepositoryLocation.ID) {
-        update(id) { location in
-            location.verification = .unchecked
-            location.verificationVersion = nil
-            location.lastError = nil
-        }
-    }
 
     func markConnected(_ id: RepositoryLocation.ID,
                        canonicalPath: String,
@@ -145,6 +144,15 @@ final class RepositoryLocationStore {
             location.matchedRemoteName = nil
             location.lastError = error
             location.lastVerifiedAt = Date()
+        }
+    }
+
+    /// Records a temporary transport/API error without replacing the last
+    /// completed verification result. A previously connected location stays
+    /// green; a never-verified location remains unchecked/red.
+    func markTemporarilyUnavailable(_ id: RepositoryLocation.ID, error: String) {
+        update(id) { location in
+            location.lastError = error
         }
     }
 
@@ -185,5 +193,22 @@ final class RepositoryLocationStore {
               let decoded = try? JSONDecoder().decode([RepositoryLocation].self, from: data)
         else { return }
         locations = decoded
+
+        // Older builds persisted `unchecked` as soon as a refresh began. If
+        // that task was then cancelled, the previous successful result was
+        // lost even though its matched remote and timestamp remained. Repair
+        // that interrupted-check state once on load.
+        var repairedInterruptedCheck = false
+        for index in locations.indices
+        where locations[index].verification == .unchecked
+            && locations[index].matchedRemoteName != nil
+            && locations[index].lastVerifiedAt != nil
+            && locations[index].lastError == nil
+        {
+            locations[index].verification = .connected
+            locations[index].verificationVersion = RepositoryLocation.currentVerificationVersion
+            repairedInterruptedCheck = true
+        }
+        if repairedInterruptedCheck { save() }
     }
 }

@@ -19,8 +19,8 @@ private enum RepositoryComputerChoice: Hashable {
 struct AddRepositoryLocationView: View {
   @Environment(AppSettings.self) private var settings
   @Environment(SSHHostStore.self) private var hosts
-  @Environment(\.dismiss) private var dismiss
 
+  let onBack: () -> Void
   let onSave: (SSHHostConfig.ID?, String, Data?) -> Void
 
   #if os(macOS)
@@ -47,63 +47,18 @@ struct AddRepositoryLocationView: View {
   }
 
   var body: some View {
-    NavigationStack {
-      Form {
-        Section(settings.tr(.computer)) {
-          Picker(settings.tr(.computer), selection: $selectedComputer) {
-            Text(settings.tr(.selectComputer))
-              .tag(Optional<RepositoryComputerChoice>.none)
-            #if os(macOS)
-              Text(settings.tr(.thisMac))
-                .tag(Optional(RepositoryComputerChoice.local))
-            #endif
-            ForEach(hosts.hosts) { host in
-              Text(host.locationDisplayName)
-                .tag(Optional(RepositoryComputerChoice.remote(host.id)))
-            }
-          }
-          .labelsHidden()
-          .onChange(of: selectedComputer) {
-            #if os(macOS)
-              if selectedComputer != .local {
-                bookmarkData = nil
-                selectionError = nil
-                path = ""
-              }
-            #endif
-          }
+    Group {
+      if let browseContext {
+        RemotePathPickerView(
+          route: browseContext.route,
+          initialPath: trimmedPath,
+          onBack: { self.browseContext = nil }
+        ) { selected in
+          path = selected
+          self.browseContext = nil
         }
-
-        Section {
-          repositoryPathField
-        } header: {
-          Text(settings.tr(.repositoryPath))
-        } footer: {
-          Text(pathFooter)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-      .formStyle(.grouped)
-      .navigationTitle(settings.tr(.addRepositoryLocation))
-      #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-      #endif
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button(settings.tr(.cancel)) { dismiss() }
-        }
-        ToolbarItem(placement: .confirmationAction) {
-          Button(settings.tr(.saveAndVerify), action: save)
-            .disabled(!canSave)
-        }
-      }
-    }
-    .sheet(item: $browseContext) { context in
-      RemotePathPickerView(
-        route: context.route,
-        initialPath: trimmedPath
-      ) { selected in
-        path = selected
+      } else {
+        locationForm
       }
     }
     .alert(
@@ -120,6 +75,58 @@ struct AddRepositoryLocationView: View {
     #if os(macOS)
       .frame(minWidth: 560, idealWidth: 560, minHeight: 280)
     #endif
+  }
+
+  private var locationForm: some View {
+    Form {
+      Section(settings.tr(.computer)) {
+        Picker(settings.tr(.computer), selection: $selectedComputer) {
+          Text(settings.tr(.selectComputer))
+            .tag(Optional<RepositoryComputerChoice>.none)
+          #if os(macOS)
+            Text(settings.tr(.thisMac))
+              .tag(Optional(RepositoryComputerChoice.local))
+          #endif
+          ForEach(hosts.hosts) { host in
+            Text(host.locationDisplayName)
+              .tag(Optional(RepositoryComputerChoice.remote(host.id)))
+          }
+        }
+        .labelsHidden()
+        .onChange(of: selectedComputer) {
+          #if os(macOS)
+            if selectedComputer != .local {
+              bookmarkData = nil
+              selectionError = nil
+              path = ""
+            }
+          #endif
+        }
+      }
+
+      Section {
+        repositoryPathField
+      } header: {
+        Text(settings.tr(.repositoryPath))
+      } footer: {
+        Text(pathFooter)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .formStyle(.grouped)
+    .navigationTitle(settings.tr(.addRepositoryLocation))
+    #if os(iOS)
+      .navigationBarTitleDisplayMode(.inline)
+    #endif
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button(settings.tr(.back), action: onBack)
+      }
+      ToolbarItem(placement: .confirmationAction) {
+        Button(settings.tr(.saveAndVerify), action: save)
+          .disabled(!canSave)
+      }
+    }
   }
 
   @ViewBuilder
@@ -197,11 +204,9 @@ struct AddRepositoryLocationView: View {
       #if os(macOS)
         guard let bookmarkData else { return }
         onSave(nil, trimmedPath, bookmarkData)
-        dismiss()
       #endif
     case .remote(let hostID):
       onSave(hostID, trimmedPath, nil)
-      dismiss()
     }
   }
 

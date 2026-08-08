@@ -39,9 +39,7 @@ struct MainView: View {
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(AppSettings.self) private var settings
     @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
-    #if os(macOS)
     @Environment(WorkspaceStore.self) private var workspace
-    #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -56,6 +54,9 @@ struct MainView: View {
     @State private var showSettings = false
     @State private var showLogoutConfirmation = false
     @State private var showProfile = false
+    #if os(iOS)
+    @State private var showMobilePages = false
+    #endif
     #if os(macOS)
     @State private var workspaceToolbarWidth: CGFloat = 660
     #endif
@@ -63,9 +64,9 @@ struct MainView: View {
     var body: some View {
         Group {
         #if os(iOS)
-        // iPhone: a single NavigationStack — the menu is the root and pages
-        // push on top, so the system edge swipe pops exactly one level. A
-        // collapsed NavigationSplitView runs TWO competing gesture systems
+        // iPhone: each Safari-style page owns one NavigationStack, so the
+        // system edge swipe pops exactly one level. A collapsed
+        // NavigationSplitView runs two competing gesture systems
         // (detail-stack pop + sidebar reveal) and pops twice per swipe.
         if horizontalSizeClass == .compact {
             compactNavigation
@@ -111,11 +112,13 @@ struct MainView: View {
                 Button {
                     workspace.goBack()
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: "chevron.left.square.fill")
+                        .font(.system(size: 21, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(workspace.canGoBack ? .primary : .secondary)
                         .frame(width: 28, height: 28, alignment: .center)
                 }
                 .buttonStyle(.plain)
-                .disabled(!workspace.canGoBack)
                 .help(settings.tr(.back))
 
                 WorkspaceTabBar()
@@ -123,7 +126,7 @@ struct MainView: View {
                     .layoutPriority(1)
             }
             .frame(height: 34, alignment: .center)
-            .frame(width: max(100, workspaceToolbarWidth - 180), alignment: .leading)
+            .frame(width: max(100, workspaceToolbarWidth - 150), alignment: .leading)
         }
 
     }
@@ -133,45 +136,75 @@ struct MainView: View {
 
     #if os(iOS)
     private var compactNavigation: some View {
-        NavigationStack(path: $navigationPath) {
-            List {
-                profileSection
-                Section {
-                    ForEach(SidebarItem.allCases) { item in
-                        NavigationLink(value: item) {
-                            Label(settings.tr(item.titleKey), systemImage: item.icon)
-                        }
-                    }
-                }
-                signOutSection
+        WorkspacePageHost()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                mobilePageBar
             }
-            .navigationTitle("GitAgent")
-            .navigationBarTitleDisplayMode(.inline)
-            // Tighten the gap between the nav bar and the profile card.
-            .contentMargins(.top, 8, for: .scrollContent)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    settingsButton
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
+            .sheet(isPresented: $showMobilePages) {
+                MobileWorkspacePageSwitcher()
             }
             .alert(settings.tr(.logout), isPresented: $showLogoutConfirmation) {
-                Button(settings.tr(.logout), role: .destructive) { auth.logout() }
+                Button(settings.tr(.logout), role: .destructive) { logout() }
                 Button(settings.tr(.cancel), role: .cancel) {}
             } message: {
                 Text(settings.tr(.logoutConfirmMessage))
             }
-            .navigationDestination(for: SidebarItem.self) { item in
-                detailView(for: item)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .iOSHidesBackButton()
+    }
+
+    private var mobilePageBar: some View {
+        ZStack {
+            HStack(spacing: 22) {
+                Button {
+                    workspace.goBack()
+                } label: {
+                    Image(systemName: "chevron.backward")
+                        .frame(width: 32, height: 32)
+                }
+                .disabled(!workspace.canGoBack)
+                .accessibilityLabel(settings.tr(.back))
+
+                Spacer(minLength: 0)
+
+                Button {
+                    workspace.openNewPage()
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel(settings.tr(.newPage))
+
+                Button {
+                    MobileWorkspacePreview.captureSelected(in: workspace)
+                    showMobilePages = true
+                } label: {
+                    Label("\(workspace.pages.count)", systemImage: "square.on.square")
+                        .frame(minWidth: 38, minHeight: 32)
+                }
+                .accessibilityLabel(settings.tr(.pages))
             }
-            .navigationDestination(for: Repo.self) { repo in
-                RepoDetailView(repo: repo)
+            .frame(maxWidth: .infinity)
+
+            Menu {
+                Button {
+                    workspace.openSettings()
+                } label: {
+                    Label(settings.tr(.settings), systemImage: "gearshape")
+                }
+                Button(role: .destructive) {
+                    showLogoutConfirmation = true
+                } label: {
+                    Label(settings.tr(.logout), systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .frame(width: 38, height: 32)
             }
         }
+        .font(.system(size: 18, weight: .medium))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
     #endif
 
@@ -183,8 +216,20 @@ struct MainView: View {
                 profileSection
                 Section {
                     ForEach(SidebarItem.allCases) { item in
+                        #if os(macOS)
+                        Button {
+                            openSidebarPage(item)
+                        } label: {
+                            Label(settings.tr(item.titleKey), systemImage: item.icon)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                        #else
                         Label(settings.tr(item.titleKey), systemImage: item.icon)
                             .tag(item)
+                        #endif
                     }
                 }
                 signOutSection
@@ -204,7 +249,7 @@ struct MainView: View {
             }
             #endif
             .alert(settings.tr(.logout), isPresented: $showLogoutConfirmation) {
-                Button(settings.tr(.logout), role: .destructive) { auth.logout() }
+                Button(settings.tr(.logout), role: .destructive) { logout() }
                 Button(settings.tr(.cancel), role: .cancel) {}
             } message: {
                 Text(settings.tr(.logoutConfirmMessage))
@@ -249,10 +294,6 @@ struct MainView: View {
         // page but does NOT propagate to pushed pages on macOS.
         .environment(\.sidebarVisibility, $splitVisibility)
         #if os(macOS)
-        .onChange(of: selection) { _, _ in
-            guard let selection else { return }
-            openSidebarPage(selection)
-        }
         .onChange(of: workspace.selectedID) { _, _ in
             // A repository may have been pushed above this root stack when a
             // global tab is opened. Pop it before showing the newly selected
@@ -267,7 +308,7 @@ struct MainView: View {
     private var settingsButton: some View {
         Button {
             #if os(macOS)
-            workspace.showSettings()
+            workspace.openSettings()
             #else
             showSettings = true
             #endif
@@ -282,7 +323,7 @@ struct MainView: View {
             Section {
                 Button {
                     #if os(macOS)
-                    workspace.showProfile()
+                    workspace.openProfile()
                     #else
                     showProfile = true
                     #endif
@@ -297,7 +338,10 @@ struct MainView: View {
                                 .font(.system(size: CGFloat(settings.uiFontSize) - 4))
                                 .foregroundStyle(.secondary)
                         }
+                        Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 // Plain style: the default macOS button style draws a whitish
                 // capsule over the sidebar material.
@@ -306,9 +350,11 @@ struct MainView: View {
 
                 #if os(macOS)
                 Button {
-                    workspace.showSettings()
+                    workspace.openSettings()
                 } label: {
                     Label(settings.tr(.settings), systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
@@ -328,8 +374,15 @@ struct MainView: View {
                 showLogoutConfirmation = true
             } label: {
                 Label(settings.tr(.logout), systemImage: "rectangle.portrait.and.arrow.right")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
         }
+    }
+
+    private func logout() {
+        workspace.resetToInitialPage()
+        auth.logout()
     }
 
     // MARK: - Detail
@@ -338,25 +391,24 @@ struct MainView: View {
         navigationPath = NavigationPath()
         #if os(iOS)
         if horizontalSizeClass == .compact {
-            navigationPath.append(SidebarItem.terminal)
+            workspace.showTerminal()
         } else {
             selection = .terminal
         }
         #else
-        selection = .terminal
+        workspace.showTerminal()
         #endif
     }
 
     #if os(macOS)
-    /// Sidebar navigation updates the selected page and records its previous
-    /// destination in that page's browser-style back history.
+    /// Every sidebar click opens and selects an independent browser-style page.
     private func openSidebarPage(_ item: SidebarItem) {
         switch item {
-        case .mine: workspace.showMyRepositories()
-        case .starred: workspace.showStarred()
-        case .chat: workspace.showChat()
-        case .agent: workspace.showAgent()
-        case .terminal: workspace.showTerminal()
+        case .mine: workspace.openMyRepositories()
+        case .starred: workspace.openStarred()
+        case .chat: workspace.openChat()
+        case .agent: workspace.openAgent()
+        case .terminal: workspace.openTerminal()
         }
     }
     #endif
@@ -407,6 +459,10 @@ private struct WorkspacePageKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct WorkspacePageIDKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
 extension EnvironmentValues {
     var sidebarVisibility: Binding<NavigationSplitViewVisibility>? {
         get { self[SidebarVisibilityKey.self] }
@@ -415,6 +471,10 @@ extension EnvironmentValues {
     var isWorkspacePage: Bool {
         get { self[WorkspacePageKey.self] }
         set { self[WorkspacePageKey.self] = newValue }
+    }
+    var workspacePageID: UUID? {
+        get { self[WorkspacePageIDKey.self] }
+        set { self[WorkspacePageIDKey.self] = newValue }
     }
 }
 
@@ -518,7 +578,7 @@ private final class TitlebarAccessoryInstallerView: NSView {
     private func install(in window: NSWindow) {
         let button = NSButton()
         button.image = NSImage(
-            systemSymbolName: "plus.circle.fill",
+            systemSymbolName: "plus.square.fill",
             accessibilityDescription: L10n.resolveCurrent(.newPage)
         )?.withSymbolConfiguration(
             NSImage.SymbolConfiguration(pointSize: 21, weight: .semibold)

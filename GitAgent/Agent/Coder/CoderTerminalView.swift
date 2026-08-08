@@ -43,6 +43,15 @@ struct CoderTerminalView: View {
     coder.record(recordID)
   }
 
+  private var pageTitle: String {
+    let title = record?.repositoryFullName ?? settings.tr(.coder)
+    #if os(macOS)
+      return isWorkspacePage ? "" : title
+    #else
+      return title
+    #endif
+  }
+
   private var terminalState: TerminalSessionState {
     #if os(macOS)
       if activeTerminal == .local {
@@ -61,7 +70,7 @@ struct CoderTerminalView: View {
         failedView(message)
       }
     }
-    .navigationTitle(isWorkspacePage ? "" : record?.repositoryFullName ?? settings.tr(.coder))
+    .navigationTitle(pageTitle)
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -142,7 +151,13 @@ struct CoderTerminalView: View {
       Text(message)
     } actions: {
       Button(settings.tr(.retry)) { reconnect() }
-      Button(settings.tr(.back)) { dismiss() }
+      Button(settings.tr(.back)) {
+        if isWorkspacePage {
+          workspace.goBack()
+        } else {
+          dismiss()
+        }
+      }
     }
   }
 

@@ -54,28 +54,27 @@ struct RepoListView: View {
     let repos: [Repo]
 
     @State private var configuringRepo: Repo?
-    #if os(macOS)
     @Environment(WorkspaceStore.self) private var workspace
-    #endif
+    @Environment(\.isWorkspacePage) private var isWorkspacePage
 
     var body: some View {
         List(repos) { repo in
             HStack(spacing: 10) {
-                #if os(macOS)
-                Button {
-                    workspace.showRepository(repo)
-                } label: {
-                    RepoRow(repo: repo)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if isWorkspacePage {
+                        Button {
+                            workspace.showRepository(repo)
+                        } label: {
+                            repositoryRow(repo)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                    } else {
+                        NavigationLink(value: repo) {
+                            repositoryRow(repo)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-                #else
-                NavigationLink(value: repo) {
-                    RepoRow(repo: repo)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                #endif
 
                 agentButton(for: repo)
             }
@@ -88,6 +87,12 @@ struct RepoListView: View {
         // Tighten the gap between the inline title and the first row.
         .contentMargins(.top, 8, for: .scrollContent)
         #endif
+    }
+
+    private func repositoryRow(_ repo: Repo) -> some View {
+        RepoRow(repo: repo)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
     }
 
     private func agentButton(for repo: Repo) -> some View {

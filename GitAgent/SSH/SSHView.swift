@@ -91,6 +91,8 @@ struct SSHView: View {
                     editingHost = SSHHostConfig()
                 } label: {
                     Label(settings.tr(.addSSHHost), systemImage: "plus")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
             }
             #else
@@ -109,6 +111,15 @@ struct SSHView: View {
         }
         .macTransparentScrollBackground()
         .toolbar {
+            #if os(iOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingHost = SSHHostConfig()
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+            #else
             if !isWorkspacePage {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -118,6 +129,7 @@ struct SSHView: View {
                     }
                 }
             }
+            #endif
         }
     }
 
@@ -242,6 +254,13 @@ struct SSHView: View {
             }
         }
         .toolbar {
+            #if os(iOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button(settings.tr(.disconnect), role: .destructive) {
+                    disconnectActive()
+                }
+            }
+            #else
             if !isWorkspacePage {
                 ToolbarItem(placement: .primaryAction) {
                     Button(settings.tr(.disconnect), role: .destructive) {
@@ -249,14 +268,17 @@ struct SSHView: View {
                     }
                 }
             }
+            #endif
         }
         .overlay(alignment: .topTrailing) {
+            #if os(macOS)
             if isWorkspacePage {
                 Button(settings.tr(.disconnect), role: .destructive) {
                     disconnectActive()
                 }
                 .padding(12)
             }
+            #endif
         }
         .fontSizeShortcuts(9...24,
                            get: { settings.terminalFontSize },

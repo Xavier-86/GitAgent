@@ -34,8 +34,11 @@ struct AgentView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
           }
+          .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.vertical, 5)
+          .contentShape(Rectangle())
         }
 
         if isWorkspacePage {
@@ -77,7 +80,10 @@ struct AgentView: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
+      Spacer(minLength: 0)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 5)
+    .contentShape(Rectangle())
   }
 }

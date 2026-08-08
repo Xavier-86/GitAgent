@@ -14,7 +14,7 @@ import WebKit
 /// katex.min.css resolves fonts via a relative `fonts/` path.
 enum WebAssets {
     /// Bump this when the bundled assets change to force re-installation.
-    private static let version = "14"
+    private static let version = "17"
 
     /// Installed once per app launch — web views (one per chat bubble) must
     /// not hit the file system for the version check on every creation.
@@ -77,7 +77,7 @@ enum WebAssets {
 
 // MARK: - Link routing
 
-/// Downloads image data for a URL (used to load GitHub-hosted images with auth).
+/// Loads image data natively for protected GitHub URLs or authorized local files.
 typealias MarkdownImageLoader = (URL) async throws -> (data: Data, mimeType: String)
 
 /// A link tapped inside rendered Markdown, classified for in-app navigation.
@@ -103,9 +103,15 @@ struct WebMarkdownView: View {
     var rawBaseURL: URL? = nil
     /// Base URL for resolving relative links (github.com blob directory).
     var blobBaseURL: URL? = nil
+    /// Root of a local repository. File links inside this directory are routed
+    /// through `onOpenLink`; links that escape it are rejected.
+    var localRootURL: URL? = nil
+    /// Root URL for a repository exposed through an app-owned URL scheme.
+    /// Relative links are routed back to the native repository browser.
+    var repositoryRootURL: URL? = nil
     /// Called when a link is tapped, enabling in-app navigation.
     var onOpenLink: ((MarkdownLink) -> Void)? = nil
-    /// Downloads GitHub-hosted images natively (adds auth for private repositories).
+    /// Loads protected or otherwise WebView-inaccessible images natively.
     var imageLoader: MarkdownImageLoader? = nil
     /// Called with the rendered content height (points) whenever it changes —
     /// lets chat bubbles size the web view to fit.
@@ -120,6 +126,8 @@ struct WebMarkdownView: View {
         WebViewRepresentable(markdown: markdown,
                              rawBaseURL: rawBaseURL,
                              blobBaseURL: blobBaseURL,
+                             localRootURL: localRootURL,
+                             repositoryRootURL: repositoryRootURL,
                              onOpenLink: onOpenLink,
                              imageLoader: imageLoader,
                              onContentHeight: onContentHeight,
@@ -150,6 +158,8 @@ private struct WebViewRepresentable {
     let markdown: String
     let rawBaseURL: URL?
     let blobBaseURL: URL?
+    let localRootURL: URL?
+    let repositoryRootURL: URL?
     let onOpenLink: ((MarkdownLink) -> Void)?
     let imageLoader: MarkdownImageLoader?
     let onContentHeight: ((CGFloat) -> Void)?
@@ -160,6 +170,8 @@ private struct WebViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let rawBaseURL: URL?
         let blobBaseURL: URL?
+        let localRootURL: URL?
+        let repositoryRootURL: URL?
         let onOpenLink: ((MarkdownLink) -> Void)?
         let imageLoader: MarkdownImageLoader?
         let onContentHeight: ((CGFloat) -> Void)?
@@ -172,10 +184,14 @@ private struct WebViewRepresentable {
         var currentFontSize = 16
         weak var webView: WKWebView?
 
-        init(rawBaseURL: URL?, blobBaseURL: URL?, onOpenLink: ((MarkdownLink) -> Void)?,
+        init(rawBaseURL: URL?, blobBaseURL: URL?, localRootURL: URL?,
+             repositoryRootURL: URL?,
+             onOpenLink: ((MarkdownLink) -> Void)?,
              imageLoader: MarkdownImageLoader?, onContentHeight: ((CGFloat) -> Void)?) {
             self.rawBaseURL = rawBaseURL
             self.blobBaseURL = blobBaseURL
+            self.localRootURL = localRootURL
+            self.repositoryRootURL = repositoryRootURL
             self.onOpenLink = onOpenLink
             self.imageLoader = imageLoader
             self.onContentHeight = onContentHeight
@@ -218,6 +234,19 @@ private struct WebViewRepresentable {
                 onContentHeight?(CGFloat(height))
                 return
             }
+            // Rendered links are intercepted in JavaScript before WebKit tries
+            // to navigate. This is required for repository-local links because
+            // the WebContent process rejects file URLs outside its own sandbox
+            // before the navigation delegate can route them back to the app.
+            if message.name == "openLink",
+               let urlString = message.body as? String,
+               let url = URL(string: urlString),
+               let link = markdownLink(for: url) {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onOpenLink?(link)
+                }
+                return
+            }
             guard message.name == "loadImages",
                   let jobs = message.body as? [[String: Any]],
                   let imageLoader else { return }
@@ -256,8 +285,26 @@ private struct WebViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
-            // Initial template load and in-page anchors (resolved against the local file URL).
-            if url.isFileURL || url.scheme == "about" {
+            if let repositoryRootURL,
+               let path = Self.repositoryPath(for: url, rootURL: repositoryRootURL) {
+                cancelAndOpen(.sameRepoFile(path: path), decisionHandler: decisionHandler)
+                return
+            }
+            // Local repository links are handed back to the native browser.
+            // Only the initial template load may use another file URL.
+            if url.isFileURL {
+                if let localRootURL {
+                    if let path = Self.localRepositoryPath(for: url, rootURL: localRootURL) {
+                        cancelAndOpen(.sameRepoFile(path: path), decisionHandler: decisionHandler)
+                    } else {
+                        decisionHandler(navigationAction.navigationType == .other ? .allow : .cancel)
+                    }
+                } else {
+                    decisionHandler(.allow)
+                }
+                return
+            }
+            if url.scheme == "about" {
                 decisionHandler(.allow)
                 return
             }
@@ -267,18 +314,83 @@ private struct WebViewRepresentable {
                 let remainder = String(url.absoluteString.dropFirst(blobBaseURL.absoluteString.count))
                 let pathPart = remainder.split(separator: "#").first.map(String.init) ?? remainder
                 if !pathPart.isEmpty {
-                    onOpenLink?(.sameRepoFile(path: pathPart.removingPercentEncoding ?? pathPart))
+                    cancelAndOpen(
+                        .sameRepoFile(path: pathPart.removingPercentEncoding ?? pathPart),
+                        decisionHandler: decisionHandler
+                    )
+                } else {
+                    decisionHandler(.cancel)
                 }
-                decisionHandler(.cancel)
                 return
             }
             // Everything else http(s) → classify and route in-app. No system browser, ever.
             if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-                onOpenLink?(Self.route(url))
-                decisionHandler(.cancel)
+                cancelAndOpen(Self.route(url), decisionHandler: decisionHandler)
                 return
             }
             decisionHandler(.cancel)
+        }
+
+        /// Complete WebKit's policy callback before changing SwiftUI state.
+        /// Replacing the current WKWebView from inside the callback can make
+        /// AppKit attempt to reuse a view whose initialization is unwinding.
+        private func cancelAndOpen(
+            _ link: MarkdownLink,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            decisionHandler(.cancel)
+            DispatchQueue.main.async { [weak self] in
+                self?.onOpenLink?(link)
+            }
+        }
+
+        private func markdownLink(for url: URL) -> MarkdownLink? {
+            if let repositoryRootURL,
+               let path = Self.repositoryPath(for: url, rootURL: repositoryRootURL) {
+                return .sameRepoFile(path: path)
+            }
+            if url.isFileURL,
+               let localRootURL,
+               let path = Self.localRepositoryPath(for: url, rootURL: localRootURL) {
+                return .sameRepoFile(path: path)
+            }
+            if let blobBaseURL,
+               url.absoluteString.hasPrefix(blobBaseURL.absoluteString) {
+                let remainder = String(url.absoluteString.dropFirst(blobBaseURL.absoluteString.count))
+                let pathPart = remainder.split(separator: "#").first.map(String.init) ?? remainder
+                guard !pathPart.isEmpty else { return nil }
+                return .sameRepoFile(path: pathPart.removingPercentEncoding ?? pathPart)
+            }
+            if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+                return Self.route(url)
+            }
+            return nil
+        }
+
+        /// Returns a repository-relative path only when the resolved target
+        /// remains inside the local working tree. Symlinks cannot escape it.
+        private static func localRepositoryPath(for url: URL, rootURL: URL) -> String? {
+            let root = rootURL.standardizedFileURL.resolvingSymlinksInPath()
+            let target = url.standardizedFileURL.resolvingSymlinksInPath()
+            let rootPath = root.path
+            let targetPath = target.path
+            guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
+                return nil
+            }
+            guard targetPath != rootPath else { return "" }
+            return String(targetPath.dropFirst(rootPath.count + 1))
+        }
+
+        /// Maps an app-owned repository URL to a path below its declared root.
+        private static func repositoryPath(for url: URL, rootURL: URL) -> String? {
+            guard url.scheme?.lowercased() == rootURL.scheme?.lowercased(),
+                  url.host()?.lowercased() == rootURL.host()?.lowercased() else {
+                return nil
+            }
+            let rootComponents = rootURL.pathComponents.filter { $0 != "/" }
+            let targetComponents = url.pathComponents.filter { $0 != "/" }
+            guard targetComponents.starts(with: rootComponents) else { return nil }
+            return targetComponents.dropFirst(rootComponents.count).joined(separator: "/")
         }
 
         /// Maps an external URL to an in-app navigation target.
@@ -320,6 +432,7 @@ private struct WebViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "loadImages")
         configuration.userContentController.add(context.coordinator, name: "contentHeight")
+        configuration.userContentController.add(context.coordinator, name: "openLink")
         let webView = PassthroughWebView(frame: .zero, configuration: configuration)
         webView.scrollPassthrough = scrollPassthrough
         webView.navigationDelegate = context.coordinator
@@ -354,6 +467,8 @@ private struct WebViewRepresentable {
 extension WebViewRepresentable: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL,
+                    localRootURL: localRootURL,
+                    repositoryRootURL: repositoryRootURL,
                     onOpenLink: onOpenLink, imageLoader: imageLoader,
                     onContentHeight: onContentHeight)
     }
@@ -364,6 +479,8 @@ extension WebViewRepresentable: UIViewRepresentable {
 extension WebViewRepresentable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(rawBaseURL: rawBaseURL, blobBaseURL: blobBaseURL,
+                    localRootURL: localRootURL,
+                    repositoryRootURL: repositoryRootURL,
                     onOpenLink: onOpenLink, imageLoader: imageLoader,
                     onContentHeight: onContentHeight)
     }

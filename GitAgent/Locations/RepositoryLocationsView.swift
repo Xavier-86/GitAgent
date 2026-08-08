@@ -8,17 +8,22 @@
 import SwiftUI
 
 struct RepositoryLocationsView: View {
+    private enum Destination: Hashable {
+        case addLocation
+        case deploy
+    }
+
     @Environment(AppSettings.self) private var settings
     @Environment(GitHubAuthManager.self) private var auth
     @Environment(RepositoryLocationStore.self) private var locations
     @Environment(SSHHostStore.self) private var hosts
     @Environment(TerminalLaunchCoordinator.self) private var terminalLauncher
+    @Environment(WorkspaceStore.self) private var workspace
     @Environment(\.dismiss) private var dismiss
 
     let repo: Repo
 
-    @State private var isAdding = false
-    @State private var isDeploying = false
+    @State private var navigationPath: [Destination] = []
     @State private var verifyingIDs: Set<UUID> = []
     @State private var didAutoVerify = false
 
@@ -35,39 +40,33 @@ struct RepositoryLocationsView: View {
     }
 
     var body: some View {
-        repositoryLayout
-            .sheet(isPresented: $isAdding) {
-                AddRepositoryLocationView { hostID, path, bookmarkData in
-                    if let hostID {
-                        let id = locations.add(repository: repo, hostID: hostID, path: path)
-                        Task { await verify(id) }
-                        return
+        NavigationStack(path: $navigationPath) {
+            repositoryLayout
+                .navigationDestination(for: Destination.self) { destination in
+                    switch destination {
+                    case .addLocation:
+                        AddRepositoryLocationView(
+                            onBack: popDestination,
+                            onSave: saveLocation
+                        )
+                    case .deploy:
+                        RepoLaunchForm(repo: repo, presentation: .navigation)
                     }
-                    #if os(macOS)
-                        if let bookmarkData {
-                            let id = locations.addLocal(
-                                repository: repo,
-                                path: path,
-                                bookmarkData: bookmarkData
-                            )
-                            Task { await verify(id) }
-                        }
-                    #endif
+                }
+        }
+        .onChange(of: terminalLauncher.request?.id) { _, requestID in
+            if requestID != nil { dismiss() }
+        }
+        .task {
+            guard !didAutoVerify else { return }
+            didAutoVerify = true
+            let locationIDs = repositoryLocations.map(\.id)
+            await withTaskGroup(of: Void.self) { group in
+                for id in locationIDs {
+                    group.addTask { await verify(id) }
                 }
             }
-            .sheet(isPresented: $isDeploying) {
-                RepoLaunchForm(repo: repo)
-            }
-            .onChange(of: terminalLauncher.request?.id) { _, requestID in
-                if requestID != nil { dismiss() }
-            }
-            .task {
-                guard !didAutoVerify else { return }
-                didAutoVerify = true
-                for location in repositoryLocations {
-                    await verify(location.id)
-                }
-            }
+        }
     }
 
     @ViewBuilder
@@ -89,8 +88,7 @@ struct RepositoryLocationsView: View {
                 maxHeight: .infinity
             )
         #else
-        NavigationStack {
-            repositoryContent
+        repositoryContent
             .navigationTitle(settings.tr(.repositoryLocations))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -100,12 +98,12 @@ struct RepositoryLocationsView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
-                            isDeploying = true
+                            navigationPath.append(.deploy)
                         } label: {
                             Label(settings.tr(.deployRepository), systemImage: "shippingbox.and.arrow.backward")
                         }
                         Button {
-                            isAdding = true
+                            navigationPath.append(.addLocation)
                         } label: {
                             Label(settings.tr(.linkExistingRepository), systemImage: "link")
                         }
@@ -125,7 +123,6 @@ struct RepositoryLocationsView: View {
                         .background(.bar)
                 }
             }
-        }
         #endif
     }
 
@@ -179,7 +176,7 @@ struct RepositoryLocationsView: View {
         private var repositoryActions: some View {
             HStack(spacing: 10) {
                 Button {
-                    isAdding = true
+                    navigationPath.append(.addLocation)
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -189,7 +186,7 @@ struct RepositoryLocationsView: View {
                 Spacer()
 
                 Button {
-                    isDeploying = true
+                    navigationPath.append(.deploy)
                 } label: {
                     Label(
                         settings.tr(.deployRepository),
@@ -213,6 +210,7 @@ struct RepositoryLocationsView: View {
 
     private func locationRow(_ location: RepositoryLocation) -> some View {
         let isVerifying = verifyingIDs.contains(location.id)
+        let wasConnected = location.lastConnectionWasSuccessful
         let host = location.hostID.flatMap { hostID in
             hosts.hosts.first { $0.id == hostID }
         }
@@ -228,10 +226,10 @@ struct RepositoryLocationsView: View {
                                 .controlSize(.small)
                         } else {
                             Image(
-                                systemName: location.isConnected
+                                systemName: wasConnected
                                     ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
                             )
-                            .foregroundStyle(location.isConnected ? .green : .red)
+                            .foregroundStyle(wasConnected ? .green : .red)
                         }
                     }
                     .frame(width: 20, height: 20)
@@ -252,7 +250,7 @@ struct RepositoryLocationsView: View {
                             Text(settings.tr(.verifying))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        } else if location.isConnected {
+                        } else if wasConnected {
                             Text(settings.tr(.connected))
                                 .font(.caption)
                                 .foregroundStyle(.green)
@@ -269,6 +267,8 @@ struct RepositoryLocationsView: View {
 
                     Spacer()
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!location.isConnected || (!location.isLocal && host == nil))
@@ -281,8 +281,72 @@ struct RepositoryLocationsView: View {
             .buttonStyle(.borderless)
             .disabled(isVerifying)
             .help(settings.tr(.verify))
+
+            if location.isLocal {
+                #if os(macOS)
+                    Button {
+                        openLocalRepository(location)
+                    } label: {
+                        Label(settings.tr(.view), systemImage: "folder")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!location.isConnected)
+                    .help(settings.tr(.viewLocalRepository))
+                #endif
+            } else if let host {
+                Button {
+                    openRemoteRepository(location, host: host)
+                } label: {
+                    Label(settings.tr(.view), systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!location.isConnected)
+                .help(settings.tr(.viewRemoteRepository))
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    private func popDestination() {
+        guard !navigationPath.isEmpty else { return }
+        navigationPath.removeLast()
+    }
+
+    private func saveLocation(hostID: SSHHostConfig.ID?, path: String, bookmarkData: Data?) {
+        if let hostID {
+            let id = locations.add(repository: repo, hostID: hostID, path: path)
+            popDestination()
+            Task { await verify(id) }
+            return
+        }
+        #if os(macOS)
+            if let bookmarkData {
+                let id = locations.addLocal(
+                    repository: repo,
+                    path: path,
+                    bookmarkData: bookmarkData
+                )
+                popDestination()
+                Task { await verify(id) }
+            }
+        #endif
+    }
+
+    #if os(macOS)
+        private func openLocalRepository(_ location: RepositoryLocation) {
+            guard location.isLocal, location.isConnected else { return }
+            workspace.showLocalRepository(repo, location: location)
+            dismiss()
+        }
+    #endif
+
+    private func openRemoteRepository(
+        _ location: RepositoryLocation,
+        host: SSHHostConfig
+    ) {
+        guard !location.isLocal, location.isConnected else { return }
+        workspace.showRemoteRepository(repo, location: location, host: host)
+        dismiss()
     }
 
     private func openInTerminal(_ location: RepositoryLocation) {
@@ -297,7 +361,6 @@ struct RepositoryLocationsView: View {
         else { return }
 
         verifyingIDs.insert(id)
-        locations.markChecking(id)
         defer { verifyingIDs.remove(id) }
 
         do {
@@ -348,10 +411,19 @@ struct RepositoryLocationsView: View {
                 remoteName: probe.remoteName,
                 bookmarkData: probe.bookmarkData
             )
+        } catch is CancellationError {
+            return
         } catch let error as RepositoryLocationVerifier.VerificationError {
-            locations.markFailed(id, error: error.message(expectedRepository: repo.fullName))
+            let message = error.message(expectedRepository: repo.fullName)
+            switch error {
+            case .remoteUnreachable:
+                locations.markTemporarilyUnavailable(id, error: message)
+            default:
+                locations.markFailed(id, error: message)
+            }
         } catch {
-            locations.markFailed(
+            guard !Task.isCancelled else { return }
+            locations.markTemporarilyUnavailable(
                 id,
                 error: "\(settings.tr(.connectionFailed)): \(error.localizedDescription)"
             )

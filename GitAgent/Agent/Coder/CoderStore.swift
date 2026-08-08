@@ -24,7 +24,11 @@ final class CoderStore {
     var alive = false
     var turnFinished = false
     var lastActivity = 0
+    var lastOutputSignature = 0
     var lastDone = 0
+    /// Highest hook completion count already handed to LocalNotifier.
+    var lastNotifiedDone = 0
+    var completionHookEnabled = false
     var lastOutputAt = Date.distantPast
     var sawOutput = false
     /// kimi only: an idle completion was already signalled for the current
@@ -32,20 +36,25 @@ final class CoderStore {
     /// session), so notifications fire once per state transition.
     var notifiedIdle = false
     var probing = false
+    /// Loaded sessions establish their existing counters before new
+    /// completions are eligible to notify.
+    var hasBaseline = false
   }
 
   private let probeInterval: UInt64 = 5_000_000_000
   private let idleThreshold: TimeInterval = 10
   private var pollTask: Task<Void, Never>?
+  private var completionWatchTasks: [CoderSessionRecord.ID: Task<Void, Never>] = [:]
   /// Probing resolves routes autonomously, so the store keeps the app's
   /// host store (set once at launch).
   private var hosts: SSHHostStore?
+  private var settings: AppSettings?
 
   init() {
     load()
     pollTask = Task { [weak self] in
       while !Task.isCancelled {
-        await self?.probeAll()
+        self?.probeAll()
         try? await Task.sleep(nanoseconds: self?.probeInterval ?? 5_000_000_000)
       }
     }
@@ -53,8 +62,9 @@ final class CoderStore {
 
   /// Provides the SSH hosts used to resolve probe routes. Called once at
   /// app launch.
-  func attach(hosts: SSHHostStore) {
+  func attach(hosts: SSHHostStore, settings: AppSettings) {
     self.hosts = hosts
+    self.settings = settings
   }
 
   func record(_ id: CoderSessionRecord.ID) -> CoderSessionRecord? {
@@ -94,6 +104,7 @@ final class CoderStore {
         try await CoderExecutor.createSession(record: record, route: route)
         var runtime = status[record.id] ?? SessionRuntime()
         runtime.alive = true
+        runtime.hasBaseline = true
         status[record.id] = runtime
       } catch {
         records.removeAll { $0.id == record.id }
@@ -105,6 +116,12 @@ final class CoderStore {
   }
 
   func kill(record: CoderSessionRecord, hosts: SSHHostStore) {
+    completionWatchTasks[record.id]?.cancel()
+    completionWatchTasks[record.id] = nil
+    var runtime = status[record.id] ?? SessionRuntime()
+    runtime.alive = false
+    runtime.turnFinished = false
+    status[record.id] = runtime
     Task { [weak self] in
       await CoderExecutor.killSession(
         record: record,
@@ -119,6 +136,8 @@ final class CoderStore {
   }
 
   func delete(record: CoderSessionRecord, hosts: SSHHostStore) {
+    completionWatchTasks[record.id]?.cancel()
+    completionWatchTasks[record.id] = nil
     Task { [weak self] in
       await CoderExecutor.killSession(
         record: record,
@@ -171,30 +190,49 @@ final class CoderStore {
     var runtime = status[record.id] ?? SessionRuntime()
     guard probe.alive else {
       // Externally killed or the CLI exited on its own.
+      completionWatchTasks[record.id]?.cancel()
+      completionWatchTasks[record.id] = nil
       runtime.alive = false
       runtime.turnFinished = false
       status[record.id] = runtime
       return
     }
     runtime.alive = true
-    if probe.activity > runtime.lastActivity {
+    if !runtime.hasBaseline {
       runtime.lastActivity = probe.activity
+      runtime.lastOutputSignature = probe.outputSignature
+      runtime.lastDone = probe.done
+      runtime.lastNotifiedDone = probe.done
+      runtime.completionHookEnabled = probe.completionHookEnabled
+      runtime.hasBaseline = true
+      status[record.id] = runtime
+      startCompletionWatchIfNeeded(for: record)
+      return
+    }
+    if probe.activity > runtime.lastActivity ||
+      probe.outputSignature != runtime.lastOutputSignature
+    {
+      runtime.lastActivity = probe.activity
+      runtime.lastOutputSignature = probe.outputSignature
       runtime.lastOutputAt = Date()
       runtime.sawOutput = true
       runtime.turnFinished = false
       runtime.notifiedIdle = false
     }
-    // claude/codex: the completion hooks appended to turn-done.
+    runtime.completionHookEnabled = probe.completionHookEnabled
+    // Supported CLIs append an exact completion marker from their hook.
     if probe.done > runtime.lastDone {
       runtime.lastDone = probe.done
-      if !runtime.turnFinished {
-        runtime.turnFinished = true
+      runtime.turnFinished = true
+      if probe.done > runtime.lastNotifiedDone {
+        runtime.lastNotifiedDone = probe.done
         notifyTurnFinished(record)
       }
     }
-    // kimi has no per-invocation hooks: output that advanced and then went
-    // quiet for the idle threshold approximates a finished turn.
+    // Older Kimi versions cannot load Stop hooks. Only those sessions use
+    // output idleness as a compatibility fallback.
     if record.tool == .kimi,
+      !runtime.completionHookEnabled,
       runtime.sawOutput,
       !runtime.notifiedIdle,
       !runtime.turnFinished,
@@ -205,12 +243,85 @@ final class CoderStore {
       notifyTurnFinished(record)
     }
     status[record.id] = runtime
+    startCompletionWatchIfNeeded(for: record)
+  }
+
+  /// Exact CLI hooks are watched on a lightweight long-lived channel so
+  /// notification latency is not tied to the five-second full probe.
+  private func startCompletionWatchIfNeeded(for record: CoderSessionRecord) {
+    guard completionWatchTasks[record.id] == nil,
+      let runtime = status[record.id],
+      runtime.alive,
+      runtime.completionHookEnabled
+    else { return }
+    let baseline = runtime.lastDone
+    completionWatchTasks[record.id] = Task { [weak self] in
+      guard let self else { return }
+      await self.watchCompletions(for: record, startingAfter: baseline)
+    }
+  }
+
+  private func watchCompletions(for record: CoderSessionRecord, startingAfter baseline: Int) async {
+    var observedDone = baseline
+    defer { completionWatchTasks[record.id] = nil }
+
+    while !Task.isCancelled {
+      guard records.contains(where: { $0.id == record.id }),
+        let runtime = status[record.id],
+        runtime.alive,
+        runtime.completionHookEnabled,
+        let hosts
+      else { return }
+      observedDone = max(observedDone, runtime.lastDone)
+
+      do {
+        let result = try await CoderExecutor.waitForCompletion(
+          record: record,
+          afterDone: observedDone,
+          route: try resolveRoute(for: record, hosts: hosts)
+        )
+        switch result {
+        case .completed(let count):
+          observedDone = max(observedDone, count)
+          guard var current = status[record.id] else { return }
+          // The full probe owns lastDone, while lastNotifiedDone arbitrates
+          // notification delivery between both detection paths.
+          if count > current.lastNotifiedDone {
+            current.lastNotifiedDone = count
+            current.turnFinished = true
+            status[record.id] = current
+            notifyTurnFinished(record)
+          }
+        case .timedOut:
+          continue
+        case .sessionEnded:
+          if var current = status[record.id] {
+            current.alive = false
+            current.turnFinished = false
+            status[record.id] = current
+          }
+          return
+        case .hookUnavailable:
+          if var current = status[record.id] {
+            current.completionHookEnabled = false
+            status[record.id] = current
+          }
+          return
+        }
+      } catch {
+        guard !Task.isCancelled else { return }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+      }
+    }
   }
 
   private func notifyTurnFinished(_ record: CoderSessionRecord) {
+    guard settings?.coderCompletionNotifications ?? true else { return }
+    let title = "\(record.tool.displayName) · \(record.repositoryFullName)"
     LocalNotifier.post(
-      title: "\(record.repositoryFullName) · \(record.tool.displayName)",
-      body: L10n.resolveCurrent(.coderTurnFinished)
+      title: title,
+      body: L10n.resolveCurrent(.coderTurnFinished),
+      coderSessionID: record.id
     )
   }
 

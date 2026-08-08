@@ -6,7 +6,7 @@
 
 # GitAgent
 
-**集 GitHub 浏览、AI 聊天和内置终端于一体的原生应用——支持 iPhone、iPad 和 Mac。**
+**集 GitHub 浏览、AI 聊天和内置终端于一体的原生应用——支持 iPhone 和 Mac。**
 
 GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设备上的仓库。现在它已经可以用来浏览 GitHub、与 LLM 聊你的代码、打开本地和 SSH 终端、把仓库关联到真实的工作树，以及一张表单完成仓库部署。
 
@@ -14,13 +14,15 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
 
 **浏览你的仓库** —— 通过 GitHub OAuth Device Flow 登录（token 存系统钥匙串）；你自己的、私有的和星标的仓库，外加带贡献图的个人主页。
 
+**用浏览器式 Pages 并行工作** —— 从紧凑的入口页开始，同时保留多个任务，切换时不会丢失各 Page 的导航状态；macOS 使用工具栏标签，iPhone 使用带实时预览的 Safari 式 Pages 总览。
+
 **阅读与探索代码** —— README 和文件均以完整 Markdown 渲染（数学公式、语法高亮、锚点跳转）；图片（PNG/JPEG/GIF/WebP 等）和 PDF 均有内置查看器；文件、文件夹和仓库的链接全部在应用内打开。
 
 **与 AI 聊你的代码** —— 支持 Kimi Code、Moonshot AI、OpenAI、DeepSeek、Anthropic 或任何兼容 OpenAI 的端点，模型列表自动拉取；输入 `@` 引用仓库，再输入 `/` 附加文件或文件夹；回答流式输出、Markdown 渲染，会话本地持久化，API key 只存钥匙串。
 
 **终端——本地与 SSH** —— macOS 上的原生本地 shell，表现与 Terminal.app 一致（dotfiles、Homebrew、conda 全都能用）；粘贴 `ssh` 命令行即可添加主机，支持密码或应用生成的 Ed25519 密钥、支持跳板机；各平台共用同一个 xterm.js 终端，凭据只存钥匙串。
 
-**把仓库关联到工作树** —— 将 GitHub 仓库关联到这台 Mac 上的文件夹或 SSH 主机上的路径，并自动验证；打开已连接的位置，直接进入位于该仓库路径的终端。
+**把仓库关联到工作树** —— 将 GitHub 仓库关联到这台 Mac 上的文件夹或 SSH 主机上的路径，并自动验证；可直接在应用内浏览已连接的工作树，或打开位于该仓库路径的终端。
 
 **用 RepoLaunch 部署仓库** —— 把任意 git URL 克隆到这台 Mac 或 SSH 主机，流程清晰可见（预检 → checkout → setup/build/test → 验证）；绝不覆盖本地修改；部署成功后自动在新的工作树中打开终端。灵感来自微软的 [RepoLaunch](https://github.com/microsoft/RepoLaunch)。
 
@@ -30,7 +32,13 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
 
 ### macOS
 
-*登录后首先看到你的仓库——自己的、私有的和星标的，每行右侧是终端位置状态标记。*
+*应用启动后显示 New Page，并默认收起侧边栏。不同功能可在独立页面标签中打开和切换，不会替换当前页面。*
+
+<p>
+  <img src="assets/mac/pages.png" width="700" alt="macOS —— New Page 与页面标签">
+</p>
+
+*打开 Repositories 即可浏览自己的、私有的和星标的仓库，每行右侧是终端位置状态标记。*
 
 <p>
   <img src="assets/mac/homepage.png" width="560" alt="macOS —— 仓库列表">
@@ -87,21 +95,33 @@ GitAgent 正在成长为一个面向 Git 的智能体，可以操作你各个设
 
 ### iOS
 
-*iPhone 上的同一个应用：主页显示你的账号，往下是仓库列表。*
+*GitAgent 启动后显示紧凑的 New Page 入口。底部工具栏左侧是返回，中间是菜单，右侧是新建 Page 和 Pages 总览。*
 
 <p>
-  <img src="assets/ios/homepage.png" width="200" alt="iOS —— 主页">
-  <img src="assets/ios/repos.png" width="200" alt="iOS —— 仓库列表">
+  <img src="assets/ios/homepage.png" width="220" alt="iOS —— New Page 入口">
 </p>
 
-*README 渲染和文件浏览器，与 Mac 版一致。*
+*Safari 式 Pages 总览会显示已打开内容的真实预览；可以切换、关闭或新建 Page，而不会丢掉其他 Page。*
 
 <p>
+  <img src="assets/ios/pages.png" width="400" alt="iOS —— 带实时预览的 Pages 总览">
+</p>
+
+*在应用内浏览 GitHub 仓库、渲染 README，并沿目录树查看文件。*
+
+<p>
+  <img src="assets/ios/repos.png" width="200" alt="iOS —— 仓库列表">
   <img src="assets/ios/read.png" width="200" alt="iOS —— README 渲染">
   <img src="assets/ios/files.png" width="200" alt="iOS —— 文件浏览器">
 </p>
 
-*终端主机——支持多跳路由（"Via 5090" 表示经由跳板机访问这台 Mac）。*
+*关联到 SSH 工作树的仓库也可以直接在 iPhone 上浏览，包括 Markdown 链接和文件预览。*
+
+<p>
+  <img src="assets/ios/local.png" width="400" alt="iOS —— 浏览已连接 SSH 工作树中的 README">
+</p>
+
+*终端支持直连和多跳路由；打开已连接的位置时，shell 会直接进入对应仓库。*
 
 <p>
   <img src="assets/ios/terminal.png" width="200" alt="iOS —— 终端主机">

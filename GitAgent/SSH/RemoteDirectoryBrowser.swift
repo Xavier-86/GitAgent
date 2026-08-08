@@ -33,7 +33,11 @@ enum RemoteDirectoryBrowser {
             await connection.close()
             return try parse(String(decoding: output.readableBytesView, as: UTF8.self))
         } catch {
-            await connection.close()
+            if SSHConnection.isTransientFailure(error) {
+                await connection.invalidate()
+            } else {
+                await connection.close()
+            }
             throw error
         }
     }
